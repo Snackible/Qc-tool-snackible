@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import path from "path";
 import { Product, NutritionBlock, RDABlock } from "./types";
+import { fetchProductStatuses, resolveStatus } from "./productStatus";
 
 let cache: Product[] | null = null;
 
@@ -470,6 +471,7 @@ function parseSheet(
       large_pack_g: largePack,
       manufacturer,
       mrp,
+      status: "not_launched",
     });
   }
 
@@ -478,9 +480,7 @@ function parseSheet(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function parseProducts(): Product[] {
-  if (cache) return cache;
-
+function parseProductsFromDisk(): Product[] {
   const productsPath  = path.join(process.cwd(), "data", "products.xlsx");
   const unpivotedPath = path.join(process.cwd(), "data", "unpivoted.xlsx");
 
@@ -495,6 +495,15 @@ export function parseProducts(): Product[] {
     allProducts.push(...products);
   }
 
-  cache = allProducts;
-  return cache;
+  return allProducts;
+}
+
+export async function parseProducts(): Promise<Product[]> {
+  if (!cache) cache = parseProductsFromDisk();
+
+  const statusMap = await fetchProductStatuses();
+  return cache.map((p) => ({
+    ...p,
+    status: resolveStatus(statusMap, p.sheet, p.name),
+  }));
 }

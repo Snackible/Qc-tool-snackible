@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Product, NutritionBlock, RDABlock } from "../../lib/types";
+import { Product, NutritionBlock, RDABlock, ProductStatus } from "../../lib/types";
+import StatusDropdown from "../../components/shared/StatusDropdown";
 
 const NUTRIENT_ROWS: { label: string; key: keyof NutritionBlock; unit: string }[] = [
   { label: "Energy", key: "energy_kcal", unit: "kcal" },
@@ -348,7 +349,15 @@ function ProductDrawer({ product, onClose }: { product: Product; onClose: () => 
   );
 }
 
-function ProductCard({ product, onClick }: { product: Product; onClick: () => void }) {
+function ProductCard({
+  product,
+  onClick,
+  onStatusChange,
+}: {
+  product: Product;
+  onClick: () => void;
+  onStatusChange: (product: Product, status: ProductStatus) => Promise<void>;
+}) {
   const packSizes: string[] = [];
   if (product.small_pack_g) packSizes.push(`${product.small_pack_g}g`);
   if (product.large_pack_g) packSizes.push(`${product.large_pack_g}g`);
@@ -392,9 +401,12 @@ function ProductCard({ product, onClick }: { product: Product; onClick: () => vo
         </div>
       )}
 
-      {/* Sheet badge bottom right */}
+      {/* Status dropdown bottom right */}
       <div style={{ position: "absolute", bottom: 14, right: 14 }}>
-        <SheetBadge sheet={product.sheet} />
+        <StatusDropdown
+          value={product.status}
+          onChange={(status) => onStatusChange(product, status)}
+        />
       </div>
     </div>
   );
@@ -431,6 +443,24 @@ export default function ProductsPage() {
       else next.add(sheet);
       return next;
     });
+  }, []);
+
+  const handleStatusChange = useCallback(async (product: Product, status: ProductStatus) => {
+    const previous = product.status;
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, status } : p)));
+
+    try {
+      const res = await fetch("/api/products/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet: product.sheet, name: product.name, status }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to update status");
+    } catch (e) {
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, status: previous } : p)));
+      alert(`Could not update status: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }, []);
 
   const filtered = products.filter((p) => {
@@ -545,6 +575,7 @@ export default function ProductsPage() {
               key={product.id}
               product={product}
               onClick={() => setSelectedProduct(product)}
+              onStatusChange={handleStatusChange}
             />
           ))}
           {filtered.length === 0 && (

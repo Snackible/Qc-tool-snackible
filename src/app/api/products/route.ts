@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const products = parseProducts();
+    const products = await parseProducts();
     return NextResponse.json(products);
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

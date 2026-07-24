@@ -28,6 +28,8 @@ export type RDABlock = {
   calcium_pct: number | null;
 };
 
+export type ProductStatus = "not_launched" | "under_review" | "needs_verification" | "launched";
+
 export type Product = {
   id: string;
   name: string;
@@ -43,4 +45,5 @@ export type Product = {
   large_pack_g: number | null;
   manufacturer: string;
   mrp: string;
+  status: ProductStatus;
 };
