@@ -46,4 +46,5 @@ export type Product = {
   manufacturer: string;
   mrp: string;
   status: ProductStatus;
+  hasCustomNutrition: boolean;
 };

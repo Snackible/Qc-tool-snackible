@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import path from "path";
 import { Product, NutritionBlock, RDABlock } from "./types";
-import { fetchProductStatuses, resolveStatus } from "./productStatus";
+import { fetchProductMeta, resolveNutritionOverride, resolveStatus } from "./productStatus";
 
 let cache: Product[] | null = null;
 
@@ -472,6 +472,7 @@ function parseSheet(
       manufacturer,
       mrp,
       status: "not_launched",
+      hasCustomNutrition: false,
     });
   }
 
@@ -501,9 +502,15 @@ function parseProductsFromDisk(): Product[] {
 export async function parseProducts(): Promise<Product[]> {
   if (!cache) cache = parseProductsFromDisk();
 
-  const statusMap = await fetchProductStatuses();
-  return cache.map((p) => ({
-    ...p,
-    status: resolveStatus(statusMap, p.sheet, p.name),
-  }));
+  const metaMap = await fetchProductMeta();
+  return cache.map((p) => {
+    const override = resolveNutritionOverride(metaMap, p.sheet, p.name);
+    return {
+      ...p,
+      status: resolveStatus(metaMap, p.sheet, p.name),
+      nutrition: override ? override.nutrition : p.nutrition,
+      rda: override ? override.rda : p.rda,
+      hasCustomNutrition: override !== null,
+    };
+  });
 }

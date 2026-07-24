@@ -77,7 +77,351 @@ function SheetBadge({ sheet }: { sheet: string }) {
   );
 }
 
-function ProductDrawer({ product, onClose }: { product: Product; onClose: () => void }) {
+function emptyNutritionBlock(grammage: number): NutritionBlock {
+  return {
+    grammage,
+    energy_kcal: 0,
+    protein_g: 0,
+    carbohydrate_g: 0,
+    total_sugar_g: 0,
+    added_sugar_g: null,
+    dietary_fibre_g: null,
+    total_fat_g: 0,
+    saturated_fat_g: null,
+    unsaturated_fat_g: null,
+    trans_fat_g: null,
+    cholesterol_mg: null,
+    sodium_mg: null,
+    calcium_mg: null,
+  };
+}
+
+function emptyRDABlock(grammage: number): RDABlock {
+  return {
+    grammage,
+    energy_pct: null,
+    protein_pct: null,
+    added_sugar_pct: null,
+    dietary_fibre_pct: null,
+    total_fat_pct: null,
+    saturated_fat_pct: null,
+    trans_fat_pct: null,
+    sodium_pct: null,
+    calcium_pct: null,
+  };
+}
+
+// In edit mode every nutrition column always has a matching RDA block (even if all null),
+// so cells never have to fall back to the "calculated from nearest grammage" interpolation.
+function alignedRda(nutrition: NutritionBlock[], rda: RDABlock[]): RDABlock[] {
+  return nutrition.map((nb) => rda.find((r) => r.grammage === nb.grammage) ?? emptyRDABlock(nb.grammage));
+}
+
+function NutritionSection({
+  product,
+  onSave,
+}: {
+  product: Product;
+  onSave: (nutrition: NutritionBlock[], rda: RDABlock[] | null) => Promise<void>;
+}) {
+  const [editMode, setEditMode] = useState(false);
+  const [draftNutrition, setDraftNutrition] = useState<NutritionBlock[]>([]);
+  const [draftRda, setDraftRda] = useState<RDABlock[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setDraftNutrition(product.nutrition.map((nb) => ({ ...nb })));
+    setDraftRda(alignedRda(product.nutrition, product.rda));
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => setEditMode(false);
+
+  const removeColumn = (grammage: number) => {
+    if (grammage === 100) return; // 100g is the standardized reference — always kept
+    setDraftNutrition((prev) => prev.filter((nb) => nb.grammage !== grammage));
+    setDraftRda((prev) => prev.filter((rb) => rb.grammage !== grammage));
+  };
+
+  const addColumn = () => {
+    const raw = window.prompt("Pack size for the new column (grams)?");
+    if (!raw) return;
+    const grammage = parseFloat(raw);
+    if (isNaN(grammage) || grammage <= 0) {
+      alert("Enter a valid grammage in grams.");
+      return;
+    }
+    if (draftNutrition.some((nb) => nb.grammage === grammage)) {
+      alert(`A ${grammage}g column already exists.`);
+      return;
+    }
+    setDraftNutrition((prev) => [...prev, emptyNutritionBlock(grammage)].sort((a, b) => a.grammage - b.grammage));
+    setDraftRda((prev) => [...prev, emptyRDABlock(grammage)].sort((a, b) => a.grammage - b.grammage));
+  };
+
+  const updateNutrientValue = (grammage: number, key: keyof NutritionBlock, raw: string) => {
+    const value = raw === "" ? null : parseFloat(raw);
+    setDraftNutrition((prev) =>
+      prev.map((nb) => (nb.grammage === grammage ? { ...nb, [key]: value === null || isNaN(value) ? null : value } : nb))
+    );
+  };
+
+  const updateRdaValue = (grammage: number, key: keyof RDABlock, raw: string) => {
+    const value = raw === "" ? null : parseFloat(raw);
+    setDraftRda((prev) =>
+      prev.map((rb) => (rb.grammage === grammage ? { ...rb, [key]: value === null || isNaN(value) ? null : value } : rb))
+    );
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(draftNutrition, draftRda);
+      setEditMode(false);
+    } catch (e) {
+      alert(`Could not save nutrition table: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetToSheetData = async () => {
+    if (!confirm("Discard the customized nutrition table and go back to the sheet's original data?")) return;
+    setSaving(true);
+    try {
+      await onSave([], null);
+      setEditMode(false);
+    } catch (e) {
+      alert(`Could not reset nutrition table: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const columns = editMode ? draftNutrition : product.nutrition;
+  const rdaColumns = editMode ? draftRda : product.rda;
+
+  if (columns.length === 0 && !editMode) return null;
+
+  const btnStyle: React.CSSProperties = {
+    padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+    border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer",
+  };
+  const cellInputStyle: React.CSSProperties = {
+    width: 64, padding: "3px 5px", borderRadius: 4, border: "1px solid var(--border)",
+    background: "var(--bg-base)", color: "var(--text-primary)", fontSize: 12, textAlign: "right",
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Nutritional Information
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {!editMode && product.hasCustomNutrition && (
+            <button onClick={resetToSheetData} disabled={saving} style={{ ...btnStyle, color: "var(--accent-red)", borderColor: "rgba(232,64,64,0.4)" }}>
+              Reset to sheet data
+            </button>
+          )}
+          {!editMode ? (
+            <button onClick={startEdit} style={{ ...btnStyle, color: "var(--accent-teal)", borderColor: "var(--accent-teal)" }}>
+              Customize
+            </button>
+          ) : (
+            <>
+              <button onClick={cancelEdit} disabled={saving} style={btnStyle}>Cancel</button>
+              <button
+                onClick={save}
+                disabled={saving}
+                style={{ ...btnStyle, background: "var(--accent-teal)", color: "#003433", borderColor: "var(--accent-teal)" }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {columns.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{
+                  textAlign: "left", padding: "8px 10px", color: "var(--text-muted)",
+                  fontWeight: 500, borderBottom: "1px solid var(--border)", minWidth: 110,
+                }}>
+                  Nutrient
+                </th>
+                {columns.map((nb) => (
+                  <th
+                    key={nb.grammage}
+                    style={{
+                      textAlign: "right", padding: "8px 10px",
+                      background: nb.grammage === 100 ? "rgba(6,170,144,0.15)" : "transparent",
+                      color: nb.grammage === 100 ? "var(--accent-teal)" : "var(--text-secondary)",
+                      fontWeight: 600,
+                      borderBottom: "1px solid var(--border)",
+                      minWidth: 70,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                      {nb.grammage}g
+                      {editMode && nb.grammage !== 100 && (
+                        <button
+                          onClick={() => removeColumn(nb.grammage)}
+                          title="Remove this pack size"
+                          style={{ background: "none", border: "none", color: "var(--accent-red)", cursor: "pointer", fontSize: 12, padding: 0, lineHeight: 1 }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </th>
+                ))}
+                {editMode && (
+                  <th style={{ padding: "8px 6px", borderBottom: "1px solid var(--border)" }}>
+                    <button onClick={addColumn} title="Add a pack size" style={{ ...btnStyle, padding: "2px 8px" }}>
+                      + Add
+                    </button>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {NUTRIENT_ROWS.map(({ label, key, unit }, rowIdx) => (
+                <tr key={key} style={{ background: rowIdx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                  <td style={{ padding: "7px 10px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>
+                    {label}
+                  </td>
+                  {columns.map((nb) => {
+                    const raw = nb[key];
+                    return (
+                      <td
+                        key={nb.grammage}
+                        style={{
+                          padding: "7px 10px", textAlign: "right",
+                          color: "var(--text-primary)",
+                          fontVariantNumeric: "tabular-nums",
+                          borderBottom: "1px solid var(--border)",
+                          background: nb.grammage === 100 ? "rgba(6,170,144,0.04)" : "transparent",
+                        }}
+                      >
+                        {editMode ? (
+                          <input
+                            type="number"
+                            value={raw === null || raw === undefined ? "" : raw}
+                            onChange={(e) => updateNutrientValue(nb.grammage, key, e.target.value)}
+                            style={cellInputStyle}
+                          />
+                        ) : (
+                          fmtVal(raw as number | null, unit)
+                        )}
+                      </td>
+                    );
+                  })}
+                  {editMode && <td style={{ borderBottom: "1px solid var(--border)" }} />}
+                </tr>
+              ))}
+              {/* RDA % section header + grammage sub-header */}
+              <tr>
+                <td colSpan={columns.length + 1 + (editMode ? 1 : 0)} style={{ padding: "8px 10px", color: "var(--text-muted)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", background: "var(--bg-elevated)" }}>
+                  % RDA
+                </td>
+              </tr>
+              <tr style={{ background: "var(--bg-elevated)" }}>
+                <td style={{ padding: "4px 10px", color: "var(--text-muted)", fontSize: 10 }} />
+                {columns.map((nb) => (
+                  <td key={nb.grammage} style={{ padding: "4px 10px", textAlign: "right", color: "var(--text-muted)", fontSize: 10, fontWeight: 600, borderBottom: "1px solid var(--border)" }}>
+                    {nb.grammage}g
+                  </td>
+                ))}
+                {editMode && <td style={{ borderBottom: "1px solid var(--border)" }} />}
+              </tr>
+              {NUTRIENT_ROWS.map(({ label, key }) => {
+                const rdaKey = RDA_KEY_MAP[key];
+                if (!rdaKey) return null;
+                return (
+                  <tr key={`rda-${key}`} style={{ background: "rgba(6,170,144,0.03)" }}>
+                    <td style={{ padding: "6px 10px", color: "var(--text-muted)", fontSize: 11, borderBottom: "1px solid var(--border)" }}>
+                      {label} %RDA
+                    </td>
+                    {columns.map((nb) => {
+                      if (editMode) {
+                        const rb = rdaColumns.find((r) => r.grammage === nb.grammage);
+                        const val = rb ? (rb[rdaKey] as number | null) : null;
+                        return (
+                          <td key={nb.grammage} style={{ padding: "6px 10px", textAlign: "right", borderBottom: "1px solid var(--border)" }}>
+                            <input
+                              type="number"
+                              value={val === null || val === undefined ? "" : val}
+                              onChange={(e) => updateRdaValue(nb.grammage, rdaKey, e.target.value)}
+                              style={cellInputStyle}
+                            />
+                          </td>
+                        );
+                      }
+
+                      // Exact match first
+                      const exactBlock = rdaColumns.find((r) => Math.abs(r.grammage - nb.grammage) < 0.5);
+                      let pct: number | null = exactBlock ? (exactBlock[rdaKey] as number | null) : null;
+                      let isCalculated = false;
+
+                      // No exact match — scale from nearest grammage that has a value
+                      if (pct === null) {
+                        const source = rdaColumns
+                          .filter((r) => (r[rdaKey] as number | null) !== null)
+                          .reduce<RDABlock | undefined>((best, rb) => {
+                            if (!best) return rb;
+                            return Math.abs(rb.grammage - nb.grammage) < Math.abs(best.grammage - nb.grammage) ? rb : best;
+                          }, undefined);
+                        if (source) {
+                          const srcPct = source[rdaKey] as number | null;
+                          if (srcPct !== null && source.grammage > 0) {
+                            pct = parseFloat((srcPct * (nb.grammage / source.grammage)).toFixed(1));
+                            isCalculated = true;
+                          }
+                        }
+                      }
+
+                      return (
+                        <td
+                          key={nb.grammage}
+                          style={{
+                            padding: "6px 10px", textAlign: "right",
+                            color: isCalculated ? "var(--text-muted)" : "var(--text-secondary)",
+                            fontSize: 11,
+                            fontVariantNumeric: "tabular-nums",
+                            borderBottom: "1px solid var(--border)",
+                          }}
+                          title={isCalculated ? `Calculated from ${rdaColumns.find(r => (r[rdaKey] as number | null) !== null)?.grammage}g RDA data` : undefined}
+                        >
+                          {pct !== null ? `${pct}%${isCalculated ? "*" : ""}` : "—"}
+                        </td>
+                      );
+                    })}
+                    {editMode && <td style={{ borderBottom: "1px solid var(--border)" }} />}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductDrawer({
+  product,
+  onClose,
+  onNutritionSave,
+}: {
+  product: Product;
+  onClose: () => void;
+  onNutritionSave: (product: Product, nutrition: NutritionBlock[], rda: RDABlock[] | null) => Promise<void>;
+}) {
   const [showFullIngredients, setShowFullIngredients] = useState(false);
 
   useEffect(() => {
@@ -194,136 +538,10 @@ function ProductDrawer({ product, onClose }: { product: Product; onClose: () => 
         )}
 
         {/* Nutrition Table */}
-        {product.nutrition.length > 0 && (
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Nutritional Information
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th style={{
-                      textAlign: "left", padding: "8px 10px", color: "var(--text-muted)",
-                      fontWeight: 500, borderBottom: "1px solid var(--border)", minWidth: 110,
-                    }}>
-                      Nutrient
-                    </th>
-                    {product.nutrition.map((nb) => (
-                      <th
-                        key={nb.grammage}
-                        style={{
-                          textAlign: "right", padding: "8px 10px",
-                          background: nb.grammage === 100 ? "rgba(6,170,144,0.15)" : "transparent",
-                          color: nb.grammage === 100 ? "var(--accent-teal)" : "var(--text-secondary)",
-                          fontWeight: 600,
-                          borderBottom: "1px solid var(--border)",
-                          minWidth: 70,
-                        }}
-                      >
-                        {nb.grammage}g
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {NUTRIENT_ROWS.map(({ label, key, unit }, rowIdx) => (
-                    <tr key={key} style={{ background: rowIdx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
-                      <td style={{ padding: "7px 10px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>
-                        {label}
-                      </td>
-                      {product.nutrition.map((nb) => {
-                        const raw = nb[key];
-                        return (
-                          <td
-                            key={nb.grammage}
-                            style={{
-                              padding: "7px 10px", textAlign: "right",
-                              color: "var(--text-primary)",
-                              fontVariantNumeric: "tabular-nums",
-                              borderBottom: "1px solid var(--border)",
-                              background: nb.grammage === 100 ? "rgba(6,170,144,0.04)" : "transparent",
-                            }}
-                          >
-                            {fmtVal(raw as number | null, unit)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  {/* RDA % section header + grammage sub-header */}
-                  <tr>
-                    <td colSpan={product.nutrition.length + 1} style={{ padding: "8px 10px", color: "var(--text-muted)", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", background: "var(--bg-elevated)" }}>
-                      % RDA
-                    </td>
-                  </tr>
-                  <tr style={{ background: "var(--bg-elevated)" }}>
-                    <td style={{ padding: "4px 10px", color: "var(--text-muted)", fontSize: 10 }} />
-                    {product.nutrition.map((nb) => (
-                      <td key={nb.grammage} style={{ padding: "4px 10px", textAlign: "right", color: "var(--text-muted)", fontSize: 10, fontWeight: 600, borderBottom: "1px solid var(--border)" }}>
-                        {nb.grammage}g
-                      </td>
-                    ))}
-                  </tr>
-                  {NUTRIENT_ROWS.map(({ label, key }) => {
-                    const rdaKey = RDA_KEY_MAP[key];
-                    if (!rdaKey) return null;
-                    return (
-                      <tr key={`rda-${key}`} style={{ background: "rgba(6,170,144,0.03)" }}>
-                        <td style={{ padding: "6px 10px", color: "var(--text-muted)", fontSize: 11, borderBottom: "1px solid var(--border)" }}>
-                          {label} %RDA
-                        </td>
-                        {product.nutrition.map((nb) => {
-                          // Exact match first
-                          const exactBlock = product.rda.find(
-                            (r) => Math.abs(r.grammage - nb.grammage) < 0.5
-                          );
-                          let pct: number | null = exactBlock
-                            ? (exactBlock[rdaKey] as number | null)
-                            : null;
-                          let isCalculated = false;
-
-                          // No exact match — scale from nearest grammage that has a value
-                          if (pct === null) {
-                            const source = product.rda
-                              .filter((r) => (r[rdaKey] as number | null) !== null)
-                              .reduce<RDABlock | undefined>((best, rb) => {
-                                if (!best) return rb;
-                                return Math.abs(rb.grammage - nb.grammage) < Math.abs(best.grammage - nb.grammage) ? rb : best;
-                              }, undefined);
-                            if (source) {
-                              const srcPct = source[rdaKey] as number | null;
-                              if (srcPct !== null && source.grammage > 0) {
-                                pct = parseFloat((srcPct * (nb.grammage / source.grammage)).toFixed(1));
-                                isCalculated = true;
-                              }
-                            }
-                          }
-
-                          return (
-                            <td
-                              key={nb.grammage}
-                              style={{
-                                padding: "6px 10px", textAlign: "right",
-                                color: isCalculated ? "var(--text-muted)" : "var(--text-secondary)",
-                                fontSize: 11,
-                                fontVariantNumeric: "tabular-nums",
-                                borderBottom: "1px solid var(--border)",
-                              }}
-                              title={isCalculated ? `Calculated from ${product.rda.find(r => (r[rdaKey] as number | null) !== null)?.grammage}g RDA data` : undefined}
-                            >
-                              {pct !== null ? `${pct}%${isCalculated ? "*" : ""}` : "—"}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <NutritionSection
+          product={product}
+          onSave={(nutrition, rda) => onNutritionSave(product, nutrition, rda)}
+        />
 
         {/* Manufacturer + Shelf Life */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -463,6 +681,39 @@ export default function ProductsPage() {
     }
   }, []);
 
+  const handleNutritionSave = useCallback(
+    async (product: Product, nutrition: NutritionBlock[], rda: RDABlock[] | null) => {
+      const res = await fetch("/api/products/nutrition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheet: product.sheet,
+          name: product.name,
+          nutrition: rda === null ? null : nutrition,
+          rda: rda === null ? null : rda,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to save nutrition table");
+
+      if (rda === null) {
+        // Reset — the sheet-derived values live server-side only, so re-fetch to get them back.
+        const refreshed = await fetch("/api/products").then((r) => r.json());
+        if (Array.isArray(refreshed)) {
+          setProducts(refreshed);
+          const match = refreshed.find((p: Product) => p.id === product.id);
+          if (match) setSelectedProduct(match);
+        }
+        return;
+      }
+
+      const updated: Product = { ...product, nutrition, rda, hasCustomNutrition: true };
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? updated : p)));
+      setSelectedProduct((prev) => (prev && prev.id === product.id ? updated : prev));
+    },
+    []
+  );
+
   const filtered = products.filter((p) => {
     const matchSearch =
       !search ||
@@ -588,7 +839,11 @@ export default function ProductsPage() {
 
       {/* Drawer */}
       {selectedProduct && (
-        <ProductDrawer product={selectedProduct} onClose={() => setSelectedProduct(null)} />
+        <ProductDrawer
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          onNutritionSave={handleNutritionSave}
+        />
       )}
     </div>
   );
