@@ -17,7 +17,7 @@ export async function fetchProductMeta(): Promise<MetaMap> {
   if (!url) return {};
 
   try {
-    const res = await fetch(url, { next: { revalidate: 30 } });
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return {};
     return (await res.json()) as MetaMap;
   } catch {
