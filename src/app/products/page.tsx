@@ -724,7 +724,7 @@ export default function ProductsPage() {
   });
 
   return (
-    <div style={{ padding: "16px", minHeight: "100vh", "@media (min-width: 768px)": { padding: "32px" } }}>
+    <div style={{ padding: "16px", minHeight: "100vh" }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)" }}>
           Product Library
