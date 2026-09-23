@@ -6,10 +6,18 @@
  * Env vars required:
  *   GOOGLE_SHEETS_SPREADSHEET_ID        — the id in the sheet's URL
  *   GOOGLE_SHEETS_TAB_GID                — the gid= param in the sheet's URL
+ *
+ * Plus service account credentials, either of:
+ *   GOOGLE_SERVICE_ACCOUNT_KEY_BASE64    — (recommended) the whole downloaded
+ *                                          service account JSON file,
+ *                                          base64-encoded into one line —
+ *                                          avoids PEM newline-mangling
+ *                                          issues in dashboard env-var UIs
+ *   or the pair:
  *   GOOGLE_SERVICE_ACCOUNT_EMAIL         — service account client_email
  *   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY   — service account private_key
- *                                          (with real "\n" line breaks, or
- *                                          "\\n" escaped — both are handled)
+ *                                          (real "\n" line breaks, or
+ *                                          "\\n" escaped — both handled)
  *
  * A product's identity is the (sheet, name) pair — "sheet" here means the
  * product category/grouping column value (e.g. "Launched products"), not
@@ -62,15 +70,65 @@ function requiredEnv(name: string): string {
 let cachedClient: sheets_v4.Sheets | null = null;
 function getClient(): sheets_v4.Sheets {
   if (cachedClient) return cachedClient;
-  const email = requiredEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL");
-  const rawKey = requiredEnv("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
+  const { email, key } = getCredentials();
   const auth = new google.auth.JWT({
     email,
-    key: rawKey.replace(/\\n/g, "\n"),
+    key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
   cachedClient = google.sheets({ version: "v4", auth });
   return cachedClient;
+}
+
+function normalizePrivateKey(raw: string): string {
+  let key = raw.trim();
+  // Some env-var UIs preserve literal surrounding quotes if they were pasted in.
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1).trim();
+  }
+  // A JSON key file escapes newlines as literal "\n" — convert those to real line breaks.
+  // (A no-op if the value already has real newlines.)
+  key = key.replace(/\\n/g, "\n");
+  return key;
+}
+
+/**
+ * Prefers GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 (the whole downloaded service
+ * account JSON file, base64-encoded into one line) when set — this avoids
+ * the newline-mangling that's a common source of PEM decode errors when
+ * pasting a multi-line private key into a dashboard env-var field. Falls
+ * back to the separate email/key pair otherwise.
+ */
+function getCredentials(): { email: string; key: string } {
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
+  if (b64) {
+    let parsed: { client_email?: string; private_key?: string };
+    try {
+      parsed = JSON.parse(Buffer.from(b64.trim(), "base64").toString("utf-8"));
+    } catch {
+      throw new Error(
+        "GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 is not valid base64-encoded JSON — " +
+        "it should be the full service account JSON key file, base64-encoded."
+      );
+    }
+    if (!parsed.client_email || !parsed.private_key) {
+      throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 JSON is missing client_email or private_key.");
+    }
+    return { email: parsed.client_email, key: parsed.private_key };
+  }
+
+  const email = requiredEnv("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+  const key = normalizePrivateKey(requiredEnv("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY"));
+  if (!key.includes("BEGIN PRIVATE KEY")) {
+    throw new Error(
+      "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY doesn't look like a valid PEM key " +
+      "(missing 'BEGIN PRIVATE KEY' header) — it was likely truncated or mangled " +
+      "when pasted. Consider using GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 instead: " +
+      "base64-encode the entire downloaded service account JSON file and set that " +
+      "as one env var — it sidesteps newline/quoting issues entirely."
+    );
+  }
+  return { email, key };
 }
 
 function a1Quote(title: string): string {
