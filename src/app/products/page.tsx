@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Product, NutritionBlock, RDABlock, ProductStatus } from "../../lib/types";
 import StatusDropdown from "../../components/shared/StatusDropdown";
+import AddProductModal from "../../components/products/AddProductModal";
 
 const NUTRIENT_ROWS: { label: string; key: keyof NutritionBlock; unit: string }[] = [
   { label: "Energy", key: "energy_kcal", unit: "kcal" },
@@ -637,13 +638,16 @@ export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [activeSheets, setActiveSheets] = useState<Set<string>>(new Set());
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/products")
+  const loadProducts = useCallback(() => {
+    setLoading(true);
+    return fetch("/api/products")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
           setProducts(data);
+          setError(null);
         } else {
           setError(data.error || "Unknown error");
         }
@@ -651,6 +655,10 @@ export default function ProductsPage() {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
 
   const sheets = Array.from(new Set(products.map((p) => p.sheet)));
 
@@ -725,13 +733,25 @@ export default function ProductsPage() {
 
   return (
     <div style={{ padding: "16px", minHeight: "100vh" }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)" }}>
-          Product Library
-        </h1>
-        <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 13 }}>
-          {loading ? "Loading…" : `${filtered.length} products`}
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)" }}>
+            Product Library
+          </h1>
+          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 13 }}>
+            {loading ? "Loading…" : `${filtered.length} products`}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          style={{
+            padding: "10px 18px", borderRadius: 8, border: "none",
+            background: "var(--accent-teal)", color: "#003433",
+            fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
+          }}
+        >
+          + Add Product
+        </button>
       </div>
 
       {/* Search */}
@@ -843,6 +863,15 @@ export default function ProductsPage() {
           product={selectedProduct}
           onClose={() => setSelectedProduct(null)}
           onNutritionSave={handleNutritionSave}
+        />
+      )}
+
+      {/* Add Product */}
+      {showAddModal && (
+        <AddProductModal
+          sheets={sheets}
+          onClose={() => setShowAddModal(false)}
+          onAdded={loadProducts}
         />
       )}
     </div>
