@@ -26,6 +26,10 @@ export default function NavSidebar() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
+
   if (isMobile) {
     return (
       <>
@@ -59,7 +63,10 @@ export default function NavSidebar() {
               inset: 0,
               background: "rgba(0,0,0,0.5)",
               zIndex: 99,
+              cursor: "pointer",
             }}
+            role="button"
+            tabIndex={-1}
           />
         )}
 
@@ -81,19 +88,39 @@ export default function NavSidebar() {
             overflowY: "auto",
           }}
         >
-          {/* Logo */}
+          {/* Logo + Close button */}
           <div
             style={{
-              padding: "24px 20px 20px",
+              padding: "12px 20px",
               borderBottom: "1px solid var(--border)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>
-              snackible
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>
+                snackible
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                QC Platform
+              </div>
             </div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-              QC Platform
-            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: 18,
+                padding: 0,
+                lineHeight: 1,
+              }}
+              title="Close menu"
+            >
+              ✕
+            </button>
           </div>
 
           {/* Nav items */}
