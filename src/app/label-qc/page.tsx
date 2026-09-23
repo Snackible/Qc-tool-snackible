@@ -100,9 +100,9 @@ function Step1({ products, onProceed }: { products: Product[]; onProceed: (p: Pr
   const masterBlock = selected?.nutrition.find((nb) => nb.grammage === grammage);
 
   return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: 32 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Label QC</h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: 28 }}>
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px" }}>
+      <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Label QC</h1>
+      <p style={{ color: "var(--text-muted)", marginBottom: 28, fontSize: "13px" }}>
         Select a product and grammage, then upload a label to compare against master data.
       </p>
 
@@ -281,27 +281,27 @@ function Step2({ product, grammage, onBack }: { product: Product; grammage: numb
   };
 
   return (
-    <div style={{ padding: 32, maxWidth: 1280, margin: "0 auto" }}>
+    <div style={{ padding: "16px", maxWidth: 1280, margin: "0 auto" }}>
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
         <button
           onClick={onBack}
-          style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 16px", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13 }}
+          style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", color: "var(--text-secondary)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}
         >
           ← Back
         </button>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" }}>
-            Label QC — {product.name}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: "clamp(16px, 4vw, 20px)", fontWeight: 700, color: "var(--text-primary)", wordBreak: "break-word" }}>
+            {product.name}
           </h1>
-          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{grammage}g pack</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{grammage}g pack</span>
         </div>
       </div>
 
       {/* ── LABEL UPLOAD CARD ── */}
-      <div style={{ marginBottom: 28, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "10px 16px", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ marginBottom: 24, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "10px 12px", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)" }}>
           Label Upload
         </div>
 
@@ -311,7 +311,7 @@ function Step2({ product, grammage, onBack }: { product: Product; grammage: numb
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileInputRef.current?.click()}
-            style={{ padding: "48px 24px", textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}
+            style={{ padding: "32px 16px", textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(6,170,144,0.04)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
           >
@@ -410,10 +410,10 @@ function Step2({ product, grammage, onBack }: { product: Product; grammage: numb
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Nutrient Comparison
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: file ? "minmax(280px, 360px) 1fr" : "1fr", gap: 16, alignItems: "start" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
                 {file && (
-                  <div style={{ position: "sticky", top: 16 }}>
-                    <LabelPreview file={file} height={560} />
+                  <div style={{ borderRadius: 8, border: "1px solid var(--border)", overflow: "hidden" }}>
+                    <LabelPreview file={file} height={300} />
                   </div>
                 )}
               <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid var(--border)" }}>

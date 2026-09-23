@@ -36,15 +36,15 @@ export default function MarketIntelligencePage() {
   return (
     <div
       style={{
-        padding: 32,
+        padding: "16px",
         minHeight: "100vh",
         background: "var(--bg-base)",
       }}
     >
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
+      <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
         Market Intelligence
       </h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: 20 }}>
+      <p style={{ color: "var(--text-muted)", marginBottom: 20, fontSize: "13px" }}>
         Scan quick-commerce platforms for competitor products and claims.
       </p>
 

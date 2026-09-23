@@ -211,14 +211,14 @@ export default function FSSAIClaimsPage() {
   };
 
   return (
-    <div style={{ padding: 32 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>FSSAI Claims</h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: 28 }}>
+    <div style={{ padding: "16px" }}>
+      <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>FSSAI Claims</h1>
+      <p style={{ color: "var(--text-muted)", marginBottom: 24, fontSize: "13px" }}>
         Validate brand USP claims against FSSAI nutrient thresholds and run compliance checks.
       </p>
 
       {/* Product selector */}
-      <div style={{ maxWidth: 480, position: "relative", marginBottom: 16 }}>
+      <div style={{ maxWidth: "100%", position: "relative", marginBottom: 16 }}>
         <input
           type="text"
           placeholder="Search product…"

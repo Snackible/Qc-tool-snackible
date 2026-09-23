@@ -447,10 +447,10 @@ function ProductDrawer({
       <div
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0,
-          width: 480, background: "var(--bg-surface)",
+          width: "min(100vw, 480px)", background: "var(--bg-surface)",
           borderLeft: "1px solid var(--border)",
-          zIndex: 50, overflowY: "auto", padding: 24,
-          display: "flex", flexDirection: "column", gap: 20,
+          zIndex: 50, overflowY: "auto", padding: "16px",
+          display: "flex", flexDirection: "column", gap: 16,
         }}
       >
         {/* Header */}
@@ -587,7 +587,7 @@ function ProductCard({
         background: "var(--bg-surface)",
         border: "1px solid var(--border)",
         borderRadius: 12,
-        padding: 24,
+        padding: "16px",
         cursor: "pointer",
         transition: "border-color 0.15s, background 0.15s",
         position: "relative",
@@ -724,9 +724,9 @@ export default function ProductsPage() {
   });
 
   return (
-    <div style={{ padding: 32, minHeight: "100vh" }}>
+    <div style={{ padding: "16px", minHeight: "100vh", "@media (min-width: 768px)": { padding: "32px" } }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>
+        <h1 style={{ margin: 0, fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)" }}>
           Product Library
         </h1>
         <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 13 }}>
@@ -820,7 +820,7 @@ export default function ProductsPage() {
 
       {/* Grid */}
       {!loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))", gap: 12 }}>
           {filtered.map((product) => (
             <ProductCard
               key={product.id}
@@ -830,7 +830,7 @@ export default function ProductsPage() {
             />
           ))}
           {filtered.length === 0 && (
-            <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 48, color: "var(--text-muted)" }}>
+            <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
               No products found.
             </div>
           )}

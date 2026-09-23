@@ -17,10 +17,24 @@
   --border: rgba(6, 170, 144, 0.15);
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; }
+html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
   font-size: 14px;
+}
+
+@media (max-width: 767px) {
+  body {
+    font-size: 13px;
+  }
+  main {
+    padding-top: 44px !important;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
