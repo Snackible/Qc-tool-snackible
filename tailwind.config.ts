@@ -12,7 +12,11 @@ export default {
         "amber-brand": "#FFC000",
         "red-brand": "#E84040",
       },
-      fontFamily: { sans: ["Inter", "sans-serif"] },
+      fontFamily: {
+        sans: ["Geist", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["Outfit", "Geist", "ui-sans-serif", "sans-serif"],
+        mono: ["Geist Mono", "ui-monospace", "monospace"],
+      },
     },
   },
   plugins: [],

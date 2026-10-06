@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { NutritionBlock, RDABlock } from "../../lib/types";
+import Icon from "../ui/Icon";
 
 const NUTRIENT_FIELDS: { label: string; key: keyof NutritionBlock; unit: string; rdaKey?: keyof RDABlock }[] = [
   { label: "Energy", key: "energy_kcal", unit: "kcal", rdaKey: "energy_pct" },
@@ -23,8 +24,8 @@ const inputStyle: React.CSSProperties = {
   color: "var(--text-primary)", fontSize: 13, outline: "none",
 };
 const labelStyle: React.CSSProperties = {
-  display: "block", color: "var(--text-secondary)", fontSize: 11, fontWeight: 600,
-  marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em",
+  display: "block", color: "var(--text-secondary)", fontSize: 12.5, fontWeight: 600,
+  marginBottom: 6,
 };
 const fieldWrap: React.CSSProperties = { marginBottom: 14 };
 
@@ -128,23 +129,26 @@ export default function AddProductModal({
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 60 }} />
-      <div
+      <div className="fade-in" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,16,15,0.6)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex: 160 }} />
+      <aside
+        className="slide-in-right"
+        aria-label="Add product"
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0,
-          width: "min(100vw, 560px)", background: "var(--bg-surface)",
-          borderLeft: "1px solid var(--border)", zIndex: 61,
+          width: "min(100vw, 560px)", background: "linear-gradient(180deg, #004845, #003836)",
+          borderLeft: "1px solid var(--border-strong)", boxShadow: "-28px 0 60px -24px rgba(0,0,0,0.75)", zIndex: 161,
           overflowY: "auto", padding: "20px 20px 32px",
           display: "flex", flexDirection: "column", gap: 4,
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>Add Product</h2>
+          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, color: "var(--text-primary)" }}>Add product</h2>
           <button
             onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 20, padding: 4, lineHeight: 1 }}
+            aria-label="Close"
+            style={{ width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
           >
-            ✕
+            <Icon name="x" size={18} />
           </button>
         </div>
 
@@ -233,8 +237,8 @@ export default function AddProductModal({
         </div>
 
         <div style={{ ...fieldWrap, marginTop: 6 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
-            Nutrition — per {servingSize || "100"}g
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", marginBottom: 10 }}>
+            Nutrition, per {servingSize || "100"}g
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px", gap: 8, alignItems: "center" }}>
             <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }} />
@@ -275,10 +279,10 @@ export default function AddProductModal({
             disabled={saving}
             style={{ flex: 2, padding: "11px", borderRadius: 8, border: "none", background: "var(--accent-teal)", color: "#003433", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontSize: 13 }}
           >
-            {saving ? "Saving…" : "Add Product"}
+            {saving ? "Saving…" : "Add product"}
           </button>
         </div>
-      </div>
+      </aside>
     </>
   );
 }

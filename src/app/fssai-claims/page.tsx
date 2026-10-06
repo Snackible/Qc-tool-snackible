@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Product, NutritionBlock, RDABlock } from "../../lib/types";
+import Icon from "../../components/ui/Icon";
 import { validateClaims, calcEnergy, ClaimResult, SODIUM_THRESHOLD, CLAIM_RULES, detectPrimaryOil, calcSatFatPct } from "../../lib/fssai";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ function StatusChip({ status, label }: { status: "pass" | "fail" | "warning" | "
   };
   const s = map[status] || map.neutral;
   return (
-    <span style={{ padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color }}>
+    <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 7, fontSize: 11.5, fontWeight: 600, background: s.bg, color: s.color, whiteSpace: "nowrap" }}>
       {s.text}
     </span>
   );
@@ -206,37 +207,38 @@ export default function FSSAIClaimsPage() {
   const hasLabel = labelFile !== null;
 
   const thCell: React.CSSProperties = {
-    padding: "7px 8px", textAlign: "left", color: "var(--text-muted)",
-    fontWeight: 600, borderBottom: "1px solid var(--border)", fontSize: 11,
+    padding: "10px 10px", textAlign: "left", color: "var(--text-muted)",
+    fontWeight: 600, borderBottom: "1px solid var(--border)", fontSize: 12.5, whiteSpace: "nowrap",
   };
 
   return (
-    <div style={{ padding: "16px" }}>
-      <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>FSSAI Claims</h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: 24, fontSize: "13px" }}>
+    <div style={{ padding: "var(--page-pad)", paddingBottom: 56 }}>
+      <h1 className="page-title">FSSAI claims</h1>
+      <p className="page-sub" style={{ marginBottom: 26 }}>
         Validate brand USP claims against FSSAI nutrient thresholds and run compliance checks.
       </p>
 
       {/* Product selector */}
-      <div style={{ maxWidth: "100%", position: "relative", marginBottom: 16 }}>
+      <div style={{ maxWidth: 560, position: "relative", marginBottom: 16 }}>
+        <Icon name="search" size={18} style={{ position: "absolute", left: 14, top: 14, color: "var(--text-muted)", pointerEvents: "none", zIndex: 1 }} />
         <input
           type="text"
-          placeholder="Search product…"
+          aria-label="Search product"
+          placeholder="Search for a product"
           value={selected ? selected.name : search}
           onChange={(e) => { setSearch(e.target.value); setSelected(null); setShowDropdown(true); }}
           onFocus={() => setShowDropdown(true)}
           disabled={loading}
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 14, outline: "none" }}
+          style={{ width: "100%", padding: "13px 16px 13px 42px", borderRadius: 12, border: "1px solid var(--border)", background: "rgba(0, 40, 39, 0.55)", color: "var(--text-primary)", fontSize: 15, outline: "none" }}
         />
         {showDropdown && filtered.length > 0 && (
-          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, zIndex: 100, maxHeight: 240, overflowY: "auto", marginTop: 4 }}>
+          <div className="fade-in" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#00504d", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 18px 40px -14px rgba(0,10,9,0.85)", zIndex: 100, maxHeight: 260, overflowY: "auto", marginTop: 6, padding: 4 }}>
             {filtered.map((p) => (
               <div
                 key={p.id}
                 onClick={() => { setSelected(p); setSearch(p.name); setShowDropdown(false); clearLabel(); }}
-                style={{ padding: "10px 14px", cursor: "pointer", color: "var(--text-primary)", fontSize: 13, borderBottom: "1px solid var(--border)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-surface)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                className="menu-item"
+                style={{ padding: "10px 12px", cursor: "pointer", color: "var(--text-primary)", fontSize: 14, borderRadius: 8 }}
               >
                 <span style={{ fontWeight: 500 }}>{p.name}</span>
                 <span style={{ color: "var(--text-muted)", fontSize: 11, marginLeft: 8 }}>{p.sheet}</span>
@@ -252,53 +254,57 @@ export default function FSSAIClaimsPage() {
           {!labelFile ? (
             <div
               onClick={() => fileInputRef.current?.click()}
+              className="dropzone"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
               style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
-                border: "1px dashed var(--border)", borderRadius: 8, cursor: "pointer",
-                color: "var(--text-muted)", fontSize: 13,
+                display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
+                border: "1.5px dashed var(--border-strong)", borderRadius: 12, cursor: "pointer",
+                background: "rgba(0,40,39,0.35)", color: "var(--text-secondary)", fontSize: 14,
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--accent-teal)"; (e.currentTarget as HTMLDivElement).style.color = "var(--accent-teal)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLDivElement).style.color = "var(--text-muted)"; }}
             >
-              <span style={{ fontSize: 18 }}>📎</span>
-              <span>Upload label (optional) — JPG, PNG, or PDF</span>
+              <Icon name="paperclip" size={18} style={{ color: "var(--accent-teal-bright)" }} />
+              <span>Upload the printed label to validate against it (optional). JPG, PNG or PDF.</span>
               <input ref={fileInputRef} type="file" accept="image/*,.pdf" style={{ display: "none" }}
                 onChange={(e) => { if (e.target.files?.[0]) handleLabelFile(e.target.files[0]); }} />
             </div>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8 }}>
-              <span style={{ fontSize: 18 }}>{labelPreview ? "🖼️" : "📄"}</span>
-              <span style={{ flex: 1, fontSize: 13, color: "var(--text-primary)", fontWeight: 500 }}>{labelFile.name}</span>
-              {ocrLoading && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Extracting…</span>}
+            <div className="surface" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", flexWrap: "wrap" }}>
+              <Icon name={labelPreview ? "image" : "file"} size={18} style={{ color: "var(--accent-teal-bright)" }} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: "var(--text-primary)", fontWeight: 500, wordBreak: "break-all" }}>{labelFile.name}</span>
+              {ocrLoading && (<span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, color: "var(--text-muted)" }}><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid rgba(255,255,255,0.18)", borderTopColor: "var(--accent-teal-bright)" }} />Extracting…</span>)}
               {!labelOCR && !ocrLoading && (
                 <button
                   onClick={handleExtract}
-                  style={{ padding: "6px 14px", background: "var(--accent-teal)", color: "#003433", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 12 }}
+                  style={{ padding: "8px 14px", background: "linear-gradient(180deg, #0cb89c, #06AA90)", color: "#002d2b", border: "none", borderRadius: 9, fontWeight: 700, fontSize: 13 }}
                 >
-                  Extract from Label
+                  Extract from label
                 </button>
               )}
               {labelOCR && (
-                <span style={{ fontSize: 11, color: "var(--accent-teal)", fontWeight: 600 }}>✓ OCR extracted</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--accent-teal-bright)", fontWeight: 600 }}><Icon name="check-circle" size={15} />Text extracted</span>
               )}
               <button
                 onClick={clearLabel}
-                style={{ padding: "4px 10px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", borderRadius: 6, cursor: "pointer", fontSize: 12 }}
+                aria-label="Remove label"
+                style={{ display: "inline-flex", padding: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", borderRadius: 8 }}
               >
-                ✕
+                <Icon name="x" size={15} />
               </button>
             </div>
           )}
           {ocrError && (
-            <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(232,64,64,0.1)", border: "1px solid rgba(232,64,64,0.3)", borderRadius: 6, color: "var(--accent-red)", fontSize: 12 }}>
-              OCR Error: {ocrError}
+            <div role="alert" style={{ marginTop: 10, display: "flex", gap: 8, padding: "10px 12px", background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 10, color: "#FF9C9C", fontSize: 13 }}>
+              <Icon name="alert-circle" size={16} style={{ marginTop: 1 }} />
+              <span>Couldn&apos;t read the label. {ocrError}</span>
             </div>
           )}
         </div>
       )}
 
       {selected && !n100 && (
-        <div style={{ background: "rgba(255,192,0,0.1)", border: "1px solid rgba(255,192,0,0.3)", borderRadius: 8, padding: 16, color: "var(--accent-amber)", marginBottom: 24 }}>
+        <div role="alert" style={{ background: "rgba(255,192,0,0.1)", boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)", borderRadius: 12, padding: 16, color: "#FFD04D", marginBottom: 24, fontSize: 14 }}>
           No 100g nutrition block found for this product. Claims cannot be validated without per-100g values.
         </div>
       )}
@@ -308,21 +314,21 @@ export default function FSSAIClaimsPage() {
           {/* Data source indicator */}
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 20,
-            padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-            background: usingOCR ? "rgba(6,170,144,0.1)" : "rgba(155,191,190,0.1)",
-            border: `1px solid ${usingOCR ? "rgba(6,170,144,0.3)" : "rgba(155,191,190,0.2)"}`,
-            color: usingOCR ? "var(--accent-teal)" : "var(--text-muted)",
+            padding: "7px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+            background: usingOCR ? "rgba(6,170,144,0.12)" : "rgba(155,191,190,0.1)",
+            boxShadow: `inset 0 0 0 1px ${usingOCR ? "rgba(6,170,144,0.32)" : "rgba(155,191,190,0.2)"}`,
+            color: usingOCR ? "var(--accent-teal-bright)" : "var(--text-secondary)",
           }}>
-            <span>{usingOCR ? "🔍" : "📊"}</span>
-            <span>Validating against: {usingOCR ? "Uploaded Label (OCR)" : "Master Sheet"}</span>
+            <Icon name={usingOCR ? "scan" : "box"} size={16} />
+            <span>Validating against: {usingOCR ? "the uploaded label" : "the master sheet"}</span>
           </div>
 
           {/* Overall status banner */}
           {!usingOCR ? (
             <div style={{
-              borderRadius: 10, padding: "14px 20px", marginBottom: 28,
+              borderRadius: 12, padding: "14px 18px", marginBottom: 28,
               background: "rgba(155,191,190,0.08)",
-              border: "1px solid rgba(155,191,190,0.25)",
+              boxShadow: "inset 0 0 0 1px rgba(155,191,190,0.22)",
               color: "var(--text-secondary)",
               fontWeight: 500, fontSize: 14,
             }}>
@@ -330,33 +336,38 @@ export default function FSSAIClaimsPage() {
               The checks below show what the sheet&apos;s data supports. Upload a printed label to validate it against FSSAI thresholds.
             </div>
           ) : (
-            <div style={{
-              borderRadius: 10, padding: "14px 20px", marginBottom: 28,
-              background: overallStatus === "NON_COMPLIANT" ? "rgba(232,64,64,0.1)" : overallStatus === "REVIEW_REQUIRED" ? "rgba(255,192,0,0.1)" : "rgba(6,170,144,0.1)",
-              border: `1px solid ${overallStatus === "NON_COMPLIANT" ? "rgba(232,64,64,0.3)" : overallStatus === "REVIEW_REQUIRED" ? "rgba(255,192,0,0.3)" : "rgba(6,170,144,0.3)"}`,
-              color: overallStatus === "NON_COMPLIANT" ? "var(--accent-red)" : overallStatus === "REVIEW_REQUIRED" ? "var(--accent-amber)" : "var(--accent-teal)",
-              fontWeight: 700, fontSize: 15,
+            <div role="status" style={{
+              display: "flex", alignItems: "flex-start", gap: 11,
+              borderRadius: 12, padding: "14px 18px", marginBottom: 28,
+              background: overallStatus === "NON_COMPLIANT" ? "rgba(232,64,64,0.1)" : overallStatus === "REVIEW_REQUIRED" ? "rgba(255,192,0,0.1)" : "rgba(6,170,144,0.12)",
+              boxShadow: `inset 0 0 0 1px ${overallStatus === "NON_COMPLIANT" ? "rgba(232,64,64,0.34)" : overallStatus === "REVIEW_REQUIRED" ? "rgba(255,192,0,0.32)" : "rgba(6,170,144,0.34)"}`,
+              color: overallStatus === "NON_COMPLIANT" ? "#FF9C9C" : overallStatus === "REVIEW_REQUIRED" ? "#FFD04D" : "var(--accent-teal-bright)",
+              fontWeight: 600, fontSize: 15,
             }}>
-              {overallStatus === "NON_COMPLIANT"   && "✗ NON-COMPLIANT — One or more claims fail FSSAI thresholds on the uploaded label"}
-              {overallStatus === "REVIEW_REQUIRED" && "⚠ REVIEW REQUIRED — Energy deviation or sodium flag detected"}
-              {overallStatus === "COMPLIANT"       && "✓ COMPLIANT — All claims validated against the uploaded label, no flags raised"}
+              <Icon name={overallStatus === "NON_COMPLIANT" ? "x-circle" : overallStatus === "REVIEW_REQUIRED" ? "alert-circle" : "check-circle"} size={20} style={{ marginTop: 1 }} />
+              <span>
+                {overallStatus === "NON_COMPLIANT"   && "Non-compliant. One or more claims fail FSSAI thresholds on the uploaded label."}
+                {overallStatus === "REVIEW_REQUIRED" && "Review required. An energy deviation or sodium flag was detected."}
+                {overallStatus === "COMPLIANT"       && "Compliant. All claims validated against the uploaded label with no flags raised."}
+              </span>
             </div>
           )}
 
           {/* Main content grid — label preview panel when file is loaded */}
-          <div style={{ display: "grid", gridTemplateColumns: hasLabel ? "1fr 300px" : "1fr", gap: 28, alignItems: "start" }}>
+          <div className="fssai-split" style={{ display: "grid", gridTemplateColumns: hasLabel ? "minmax(0, 1fr) 300px" : "minmax(0, 1fr)", gap: 28, alignItems: "start" }}>
 
             {/* ── LEFT: claim matrix + compliance checks ── */}
             <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-              {/* Claim Validation Matrix */}
+              {/* Claim validation matrix */}
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Claim Validation Matrix
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "var(--text-primary)", marginBottom: 10 }}>
+                  Claim validation matrix
                 </div>
                 {activeClaimResults.length === 0 ? (
                   <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No USP claims found for this product.</div>
                 ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <div className="surface" style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                       <tr>
                         {["Claim", "Type", "Threshold", "Actual (Master)", `Serving${labelOCR?.serving_size_g ? ` (${labelOCR.serving_size_g}g)` : ""}`, "Calculated per 100g", "Status"].map((h) => (
@@ -407,15 +418,16 @@ export default function FSSAIClaimsPage() {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
 
               {/* Compliance checks */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-                {/* Energy Cross-Check */}
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Energy Cross-Check
+              <div className="fssai-two" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                {/* Energy cross-check */}
+                <div className="surface" style={{ padding: 18 }}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12 }}>
+                    Energy cross-check
                   </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <tbody>
@@ -443,13 +455,14 @@ export default function FSSAIClaimsPage() {
                   </table>
                 </div>
 
-                {/* Sodium Check */}
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Sodium Check
+                {/* Sodium check */}
+                <div className="surface" style={{ padding: 18 }}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+                    Sodium check
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--accent-amber)", marginBottom: 10 }}>
-                    ⚠ Snackible Internal Standard (not FSSAI regulation): flag if sodium &gt; {SODIUM_THRESHOLD}mg/100g
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 12.5, color: "#FFD04D", marginBottom: 12 }}>
+                    <Icon name="alert" size={14} style={{ marginTop: 2 }} />
+                    <span>Snackible internal standard, not an FSSAI regulation: flag if sodium is above {SODIUM_THRESHOLD}mg/100g</span>
                   </div>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <tbody>
@@ -476,9 +489,9 @@ export default function FSSAIClaimsPage() {
 
               {/* ── Oil-based saturated fat check (primary oil only) ── */}
               {primaryOil && (
-                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Oil-Based Saturated Fat Check
+                <div className="surface" style={{ padding: 18 }}>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+                    Oil-based saturated fat check
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>
                     Checked against the <strong style={{ color: "var(--text-secondary)" }}>primary oil</strong> (first listed — FSSAI requires ingredients in descending weight order).
@@ -486,10 +499,10 @@ export default function FSSAIClaimsPage() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                        <th style={{ padding: "6px 0", textAlign: "left",  color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Primary Oil</th>
+                        <th style={{ padding: "6px 0", textAlign: "left",  color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Primary oil</th>
                         <th style={{ padding: "6px 0", textAlign: "right", color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Limit</th>
-                        <th style={{ padding: "6px 0", textAlign: "right", color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Master Sheet</th>
-                        <th style={{ padding: "6px 0", textAlign: "right", color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Actual Label</th>
+                        <th style={{ padding: "6px 0", textAlign: "right", color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Master sheet</th>
+                        <th style={{ padding: "6px 0", textAlign: "right", color: "var(--text-muted)", fontWeight: 600, fontSize: 11 }}>Actual label</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -525,9 +538,9 @@ export default function FSSAIClaimsPage() {
             {/* ── RIGHT: sticky label preview (only when file loaded) ── */}
             {hasLabel && (
               <div style={{ position: "sticky", top: 24 }}>
-                <div style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ padding: "8px 14px", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)" }}>
-                    Label Preview
+                <div className="surface" style={{ overflow: "hidden" }}>
+                  <div style={{ padding: "11px 14px", fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 600, borderBottom: "1px solid var(--border)" }}>
+                    Label preview
                   </div>
                   <div style={{ background: "var(--bg-base)", display: "flex", justifyContent: "center", minHeight: 180 }}>
                     {labelPreview ? (
@@ -544,7 +557,7 @@ export default function FSSAIClaimsPage() {
                       />
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 0" }}>
-                        <span style={{ fontSize: 36 }}>📄</span>
+                        <Icon name="file" size={34} style={{ color: "var(--accent-teal-bright)" }} />
                         <span style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>{labelFile?.name}</span>
                       </div>
                     )}
@@ -556,7 +569,7 @@ export default function FSSAIClaimsPage() {
                           Label is per {labelOCR.serving_size_g}g — scaled ×{(100 / labelOCR.serving_size_g).toFixed(3)} to per 100g for FSSAI thresholds
                         </span>
                       ) : (
-                        <span>OCR serving size: {labelOCR.serving_size_g}g ✓ per 100g</span>
+                        <span>Label is already per 100g (serving size {labelOCR.serving_size_g}g)</span>
                       )}
                     </div>
                   )}
@@ -565,15 +578,16 @@ export default function FSSAIClaimsPage() {
             )}
           </div>
 
-          {/* ── Full Nutrition Table (master data, always full-width) ── */}
+          {/* ── Full nutrition table (master data, always full-width) ── */}
           <div style={{ marginTop: 32 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Full Nutrition Table
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "var(--text-primary)", marginBottom: 10 }}>
+              Full nutrition table
             </div>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <div className="surface" style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", minWidth: 420, borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "var(--bg-elevated)" }}>
-                  {[`Nutrient`, `Per 100g`, `Per Serving (${serving}g)`, `%RDA`].map((h) => (
+                <tr style={{ background: "rgba(255,255,255,0.04)" }}>
+                  {[`Nutrient`, `Per 100g`, `Per serving (${serving}g)`, `%RDA`].map((h) => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: h === "Nutrient" ? "left" : "right", color: "var(--text-muted)", fontWeight: 600, borderBottom: "1px solid var(--border)", fontSize: 11 }}>
                       {h}
                     </th>
@@ -596,7 +610,7 @@ export default function FSSAIClaimsPage() {
                       }}
                     >
                       <td style={{ padding: "8px 12px", color: isSodiumHigh ? "var(--accent-amber)" : "var(--text-secondary)" }}>
-                        {label}{isSodiumHigh && <span style={{ marginLeft: 6, fontSize: 10 }}>⚠</span>}
+                        {label}{isSodiumHigh && <Icon name="alert" size={13} style={{ marginLeft: 6, verticalAlign: "-2px" }} />}
                       </td>
                       <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
                         {fmtVal(val100, unit)}
@@ -612,7 +626,8 @@ export default function FSSAIClaimsPage() {
                 })}
               </tbody>
             </table>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 10 }}>
               %RDA scaled to {serving}g serving from {rdaBlock?.grammage ?? "—"}g RDA block (source: {servingSource}).
             </div>
           </div>

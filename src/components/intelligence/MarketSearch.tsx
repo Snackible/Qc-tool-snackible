@@ -87,31 +87,31 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
   }
 
   return (
-    <div className="bg-white rounded-xl border border-[#DCE8E0] p-5 shadow-sm">
+    <div className="surface p-5">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg bg-[#EAF3DE] flex items-center justify-center">
-          <Search className="w-4 h-4 text-[#2D6A4F]" />
+        <div className="w-8 h-8 rounded-lg bg-[rgba(6,170,144,0.14)] flex items-center justify-center">
+          <Search className="w-4 h-4 text-[var(--accent-teal-bright)]" />
         </div>
         <div>
-          <h2 className="font-bold text-[#1A2B22] text-sm" style={{ fontFamily: "Raleway, sans-serif" }}>
-            Market Intelligence Search
+          <h2 className="font-bold text-[var(--text-primary)] text-sm">
+            Market intelligence search
           </h2>
-          <p className="text-xs text-[#7A9186]">Scan Blinkit, Zepto, BigBasket, Swiggy Instamart & Amazon</p>
+          <p className="text-xs text-[var(--text-muted)]">Scan Blinkit, Zepto, BigBasket, Swiggy Instamart & Amazon</p>
         </div>
       </div>
 
-      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
+      <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
         <input
           type="text"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           placeholder='e.g. "protein chips", "millet snacks", "baked namkeen"'
-          className="flex-1 px-4 py-2.5 text-sm border border-[#DCE8E0] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2D6A4F]/30 focus:border-[#2D6A4F] text-[#1A2B22] placeholder:text-[#B0C4BB]"
+          className="flex-1 min-w-[220px] px-4 py-2.5 text-sm border border-[var(--border)] bg-[rgba(0,40,39,0.55)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] focus:border-[var(--accent-teal)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
         />
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="px-3 py-2.5 text-sm border border-[#DCE8E0] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2D6A4F]/30 text-[#1A2B22] bg-white"
+          className="px-3 py-2.5 text-sm border border-[var(--border)] bg-[rgba(0,40,39,0.55)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] text-[var(--text-primary)] bg-[rgba(0,40,39,0.55)]"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -120,7 +120,7 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
         <select
           value={region}
           onChange={(e) => setRegion(e.target.value)}
-          className="px-3 py-2.5 text-sm border border-[#DCE8E0] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2D6A4F]/30 text-[#1A2B22] bg-white"
+          className="px-3 py-2.5 text-sm border border-[var(--border)] bg-[rgba(0,40,39,0.55)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] text-[var(--text-primary)] bg-[rgba(0,40,39,0.55)]"
         >
           {REGIONS.map((r) => (
             <option key={r} value={r}>{r}</option>
@@ -129,7 +129,7 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
         <button
           type="submit"
           disabled={!keyword.trim() || isLoading}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#2D6A4F] text-white text-sm font-semibold rounded-xl hover:bg-[#245c43] disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent-teal)] text-[#002d2b] text-sm font-semibold rounded-xl hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
         >
           {isLoading ? (
             <>
@@ -139,7 +139,7 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
           ) : (
             <>
               <Search className="w-4 h-4" />
-              Find Competitors →
+              Find competitors
             </>
           )}
         </button>

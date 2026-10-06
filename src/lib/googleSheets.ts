@@ -213,12 +213,16 @@ async function fetchRawRows(): Promise<{ header: string[]; rows: { rowNumber: nu
 
 export async function fetchProductsFromSheet(): Promise<Product[]> {
   const { rows } = await fetchRawRows();
+  return productsFromRows(rows.map((r) => r.values));
+}
 
+/** Groups the sheet's one-row-per-(product, grammage) data rows (header excluded) into products. */
+export function productsFromRows(rowValues: string[][]): Product[] {
   type Group = { base: Record<Column, string>; nutrition: NutritionBlock[]; rda: RDABlock[] };
   const grouped = new Map<string, Group>();
   const order: string[] = [];
 
-  for (const { values } of rows) {
+  for (const values of rowValues) {
     const rec = rowToRecord(values);
     if (!rec.sheet || !rec.name) continue;
     const key = `${rec.sheet}\u0000${rec.name}`;

@@ -2,252 +2,92 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import Icon, { IconName } from "./ui/Icon";
+import BrandMark from "./ui/BrandMark";
 
-const NAV_ITEMS = [
-  { href: "/products", label: "Product Library", icon: "📦" },
-  { href: "/label-qc", label: "Label QC", icon: "🔍" },
-  { href: "/fssai-claims", label: "FSSAI Claims", icon: "✓" },
-  { href: "/market-intelligence", label: "Market Intelligence", icon: "📊" },
+const NAV_ITEMS: { href: string; label: string; icon: IconName }[] = [
+  { href: "/products", label: "Product Library", icon: "box" },
+  { href: "/label-qc", label: "Label QC", icon: "scan" },
+  { href: "/fssai-claims", label: "FSSAI Claims", icon: "badge" },
+  { href: "/market-intelligence", label: "Market Intelligence", icon: "trend" },
 ];
 
-export default function NavSidebar() {
-  const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth >= 768) setIsOpen(false);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
-    setIsOpen(false);
-  }, [pathname]);
-
-  if (isMobile) {
-    return (
-      <>
-        {/* Mobile hamburger button */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          style={{
-            position: "fixed",
-            top: 12,
-            left: 12,
-            zIndex: 100,
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            padding: "8px 12px",
-            color: "var(--text-primary)",
-            cursor: "pointer",
-            fontSize: 18,
-            lineHeight: 1,
-          }}
-        >
-          ☰
-        </button>
-
-        {/* Mobile drawer overlay */}
-        {isOpen && (
-          <div
-            onClick={() => setIsOpen(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              zIndex: 99,
-              cursor: "pointer",
-            }}
-            role="button"
-            tabIndex={-1}
-          />
-        )}
-
-        {/* Mobile drawer */}
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: 200,
-            height: "100vh",
-            background: "var(--bg-surface)",
-            borderRight: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            zIndex: 101,
-            transform: isOpen ? "translateX(0)" : "translateX(-100%)",
-            transition: "transform 0.3s ease",
-            overflowY: "auto",
-          }}
-        >
-          {/* Logo + Close button */}
-          <div
-            style={{
-              padding: "12px 20px",
-              borderBottom: "1px solid var(--border)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-primary)" }}>
-                snackible
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-                QC Platform
-              </div>
-            </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 18,
-                padding: 0,
-                lineHeight: 1,
-              }}
-              title="Close menu"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Nav items */}
-          <nav style={{ flex: 1, padding: "12px 0" }}>
-            {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setIsOpen(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 20px",
-                    textDecoration: "none",
-                    color: isActive ? "var(--accent-teal)" : "var(--text-muted)",
-                    background: isActive ? "rgba(6,170,144,0.08)" : "transparent",
-                    borderLeft: isActive ? "3px solid var(--accent-teal)" : "3px solid transparent",
-                    fontWeight: isActive ? 600 : 400,
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>{item.icon}</span>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Footer */}
-          <div
-            style={{
-              padding: "16px 20px",
-              borderTop: "1px solid var(--border)",
-              color: "var(--text-muted)",
-              fontSize: 10,
-            }}
-          >
-            v1.0
-          </div>
-        </div>
-      </>
-    );
-  }
-
+function Brand() {
   return (
-    <div
-      style={{
-        width: 240,
-        minWidth: 240,
-        height: "100vh",
-        background: "var(--bg-surface)",
-        borderRight: "1px solid var(--border)",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-      }}
-    >
-      {/* Logo / Brand */}
-      <div
-        style={{
-          padding: "24px 20px 20px",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)", letterSpacing: "-0.3px" }}>
-          snackible
-        </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-          Nutrition & QC Platform
-        </div>
+    <div className="nav-brand">
+      <BrandMark />
+      <div>
+        <div className="nav-brand-name">snackible</div>
+        <div className="nav-brand-sub">Nutrition &amp; QC</div>
       </div>
+    </div>
+  );
+}
 
-      {/* Nav items */}
-      <nav style={{ flex: 1, padding: "12px 0" }}>
+function NavLinks() {
+  const pathname = usePathname();
+  return (
+    <>
+      <div className="nav-section">Workspace</div>
+      <nav aria-label="Main" className="nav-list">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          const active = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 20px",
-                textDecoration: "none",
-                color: isActive ? "var(--accent-teal)" : "var(--text-muted)",
-                background: isActive ? "rgba(6,170,144,0.08)" : "transparent",
-                borderLeft: isActive ? "3px solid var(--accent-teal)" : "3px solid transparent",
-                fontWeight: isActive ? 600 : 400,
-                fontSize: 13,
-                transition: "background 0.15s, color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLAnchorElement).style.background = "var(--bg-elevated)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLAnchorElement).style.background = "transparent";
-                }
-              }}
-            >
-              <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>
-                {item.icon}
-              </span>
+            <Link key={item.href} href={item.href} className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined}>
+              <Icon name={item.icon} size={19} />
               <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
+    </>
+  );
+}
 
-      {/* Footer */}
-      <div
-        style={{
-          padding: "16px 20px",
-          borderTop: "1px solid var(--border)",
-          color: "var(--text-muted)",
-          fontSize: 12,
-        }}
-      >
-        v1.0 — Internal Use Only
-      </div>
-    </div>
+export default function NavSidebar() {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => setOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  return (
+    <>
+      {/* desktop */}
+      <aside className="sidebar">
+        <Brand />
+        <NavLinks />
+        <div className="nav-foot">v1.0 &middot; Internal use only</div>
+      </aside>
+
+      {/* mobile: top bar + slide-in drawer (hidden on desktop by CSS) */}
+      <header className="mobile-bar">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <BrandMark size={30} />
+          <span className="nav-brand-name" style={{ fontSize: 18 }}>snackible</span>
+        </div>
+        <button className="icon-btn" onClick={() => setOpen(true)} aria-label="Open menu" aria-expanded={open}>
+          <Icon name="menu" size={20} />
+        </button>
+      </header>
+      <div className={`drawer-overlay${open ? " open" : ""}`} onClick={() => setOpen(false)} aria-hidden="true" />
+      <aside className={`drawer${open ? " open" : ""}`} aria-hidden={!open}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingRight: 12 }}>
+          <Brand />
+          <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Close menu" tabIndex={open ? 0 : -1}>
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <NavLinks />
+        <div className="nav-foot">v1.0 &middot; Internal use only</div>
+      </aside>
+    </>
   );
 }

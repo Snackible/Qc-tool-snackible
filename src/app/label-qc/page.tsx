@@ -1,593 +1,519 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Product, NutritionBlock, RDABlock } from "../../lib/types";
+import { Product } from "../../lib/types";
+import { extractPdfText } from "../../lib/labelAudit/extract";
+import { fileToJpegs } from "../../lib/labelAudit/toImages";
+import { describeNutrition } from "../../lib/labelAudit/nutrients";
+import { PackOption, buildReference, buildVocabulary, packOptionsFor } from "../../lib/labelAudit/reference";
+import { labelHasText, runRulesAudit } from "../../lib/labelAudit/rules";
+import { AuditReport, CheckStatus, ExtractedLabel, stepStatus } from "../../lib/labelAudit/types";
+import Icon, { IconName } from "../../components/ui/Icon";
 
 const LabelPreview = dynamic(() => import("./LabelPreview"), { ssr: false });
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type OCRResult = {
-  nutrition_table: Partial<Record<string, number | null>>;
-  rda_table: Partial<Record<string, number | null>>;
-  serving_size_g: number;
-  barcode: string | null;
-  allergens_declared: string[];
-  claims_on_pack: string[];
-  fssai_license: string | null;
-  mrp: string | null;
-  net_weight: string | null;
+const STATUS_STYLE: Record<CheckStatus, { color: string; bg: string; label: string; icon: IconName }> = {
+  pass: { color: "#3fd1b8", bg: "rgba(6,170,144,0.16)", label: "Pass", icon: "check-circle" },
+  fail: { color: "#FF8A8A", bg: "rgba(232,64,64,0.16)", label: "Fail", icon: "x-circle" },
+  warn: { color: "#FFD04D", bg: "rgba(255,192,0,0.14)", label: "Review", icon: "alert-circle" },
+  skip: { color: "#A9CBCA", bg: "rgba(155,191,190,0.12)", label: "Not checked", icon: "minus-circle" },
 };
 
-type NutrientRow = {
-  label: string;
-  masterKey: keyof NutritionBlock;
-  ocrKey: string;
-  rdaKey: keyof RDABlock | null;
-  unit: string;
-  absFloor: number;
+type ExtractState =
+  | { state: "idle" }
+  | { state: "reading" }
+  | { state: "ready"; label: ExtractedLabel }
+  | { state: "no-text" }
+  | { state: "error"; message: string };
+
+const cardStyle: React.CSSProperties = { padding: 18, marginBottom: 16 };
+const cardTitle: React.CSSProperties = {
+  margin: "0 0 12px", fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text-primary)",
+};
+const inputStyle: React.CSSProperties = {
+  width: "100%", padding: "11px 13px", borderRadius: 10, border: "1px solid var(--border)",
+  background: "rgba(0, 40, 39, 0.55)", color: "var(--text-primary)", fontSize: 14.5, outline: "none",
 };
 
-const NUTRIENT_ROWS: NutrientRow[] = [
-  { label: "Energy",        masterKey: "energy_kcal",     ocrKey: "energy_kcal",     rdaKey: "energy_pct",        unit: "kcal", absFloor: 1 },
-  { label: "Protein",       masterKey: "protein_g",       ocrKey: "protein_g",       rdaKey: "protein_pct",       unit: "g",    absFloor: 0.05 },
-  { label: "Carbohydrates", masterKey: "carbohydrate_g",  ocrKey: "carbohydrate_g",  rdaKey: null,                unit: "g",    absFloor: 0.05 },
-  { label: "Total Sugar",   masterKey: "total_sugar_g",   ocrKey: "total_sugar_g",   rdaKey: null,                unit: "g",    absFloor: 0.05 },
-  { label: "Added Sugar",   masterKey: "added_sugar_g",   ocrKey: "added_sugar_g",   rdaKey: "added_sugar_pct",   unit: "g",    absFloor: 0.05 },
-  { label: "Dietary Fibre", masterKey: "dietary_fibre_g", ocrKey: "dietary_fibre_g", rdaKey: "dietary_fibre_pct", unit: "g",    absFloor: 0.05 },
-  { label: "Total Fat",     masterKey: "total_fat_g",     ocrKey: "total_fat_g",     rdaKey: "total_fat_pct",     unit: "g",    absFloor: 0.05 },
-  { label: "Saturated Fat", masterKey: "saturated_fat_g", ocrKey: "saturated_fat_g", rdaKey: "saturated_fat_pct", unit: "g",    absFloor: 0.05 },
-  { label: "Trans Fat",     masterKey: "trans_fat_g",     ocrKey: "trans_fat_g",     rdaKey: "trans_fat_pct",     unit: "g",    absFloor: 0.05 },
-  { label: "Sodium",        masterKey: "sodium_mg",       ocrKey: "sodium_mg",       rdaKey: "sodium_pct",        unit: "mg",   absFloor: 1 },
-  { label: "Calcium",       masterKey: "calcium_mg",      ocrKey: "calcium_mg",      rdaKey: "calcium_pct",       unit: "mg",   absFloor: 1 },
-];
-
-const ALLERGEN_KEYWORDS: { name: string; patterns: RegExp[] }[] = [
-  { name: "Wheat / Gluten", patterns: [/wheat/i, /gluten/i, /maida/i, /atta/i] },
-  { name: "Milk / Dairy",   patterns: [/milk/i, /dairy/i, /whey/i, /lactose/i, /butter/i, /cream/i, /cheese/i, /casein/i] },
-  { name: "Soya / Soy",     patterns: [/soy/i, /soya/i] },
-  { name: "Peanut",         patterns: [/peanut/i, /groundnut/i] },
-  { name: "Tree Nuts",      patterns: [/almond/i, /cashew/i, /walnut/i, /pistachio/i, /hazelnut/i, /pecan/i, /macadamia/i] },
-  { name: "Mustard",        patterns: [/mustard/i] },
-  { name: "Sesame",         patterns: [/sesame/i, /til/i] },
-];
-
-function detectAllergens(ingredients: string): string[] {
-  return ALLERGEN_KEYWORDS
-    .filter(({ patterns }) => patterns.some((p) => p.test(ingredients)))
-    .map(({ name }) => name);
-}
-
-type CompStatus = "PASS" | "WARNING" | "CRITICAL";
-
-function calcStatus(master: number, servingSizeData: number, absFloor: number): CompStatus {
-  const absDiff = Math.abs(master - servingSizeData);
-  if (absDiff <= absFloor) return "PASS";
-  const deviation = master !== 0 ? (absDiff / Math.abs(master)) * 100 : 100;
-  if (deviation > 15) return "CRITICAL";
-  if (deviation >= 2) return "WARNING";
-  return "PASS";
-}
-
-function StatusChip({ status }: { status: CompStatus }) {
-  const map = {
-    PASS:     { bg: "rgba(6,170,144,0.15)",  color: "#06AA90", label: "PASS" },
-    WARNING:  { bg: "rgba(255,192,0,0.15)",  color: "#FFC000", label: "WARNING" },
-    CRITICAL: { bg: "rgba(232,64,64,0.15)", color: "#E84040", label: "CRITICAL" },
-  };
-  const s = map[status];
+function Badge({ status, small }: { status: CheckStatus; small?: boolean }) {
+  const s = STATUS_STYLE[status];
   return (
-    <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, background: s.bg, color: s.color }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: small ? "2px 8px" : "4px 11px", borderRadius: 8, fontSize: small ? 11.5 : 12.5, fontWeight: 600, background: s.bg, color: s.color, whiteSpace: "nowrap" }}>
+      <Icon name={s.icon} size={small ? 13 : 15} />
       {s.label}
     </span>
   );
 }
 
-// ─── Step 1: Product / Grammage Select ───────────────────────────────────────
-
-function Step1({ products, onProceed }: { products: Product[]; onProceed: (p: Product, g: number) => void }) {
-  const [search, setSearch] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [selected, setSelected] = useState<Product | null>(null);
-  const [grammage, setGrammage] = useState<number | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 20);
-
-  const masterBlock = selected?.nutrition.find((nb) => nb.grammage === grammage);
-
-  return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px" }}>
-      <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Label QC</h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: 28, fontSize: "13px" }}>
-        Select a product and grammage, then upload a label to compare against master data.
-      </p>
-
-      <label style={{ display: "block", color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        Product
-      </label>
-      <div style={{ position: "relative" }} ref={dropdownRef}>
-        <input
-          type="text"
-          placeholder="Search product name…"
-          value={selected ? selected.name : search}
-          onChange={(e) => { setSearch(e.target.value); setSelected(null); setGrammage(null); setShowDropdown(true); }}
-          onFocus={() => setShowDropdown(true)}
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 14, outline: "none" }}
-        />
-        {showDropdown && filtered.length > 0 && (
-          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, zIndex: 100, maxHeight: 240, overflowY: "auto", marginTop: 4 }}>
-            {filtered.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => { setSelected(p); setSearch(p.name); setShowDropdown(false); setGrammage(null); }}
-                style={{ padding: "10px 14px", cursor: "pointer", color: "var(--text-primary)", fontSize: 13, borderBottom: "1px solid var(--border)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--bg-surface)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-              >
-                <span style={{ fontWeight: 500 }}>{p.name}</span>
-                <span style={{ color: "var(--text-muted)", fontSize: 11, marginLeft: 8 }}>{p.sheet}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {selected && selected.nutrition.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <label style={{ display: "block", color: "var(--text-secondary)", fontSize: 12, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Pack Size
-          </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {selected.nutrition.map((nb) => (
-              <button
-                key={nb.grammage}
-                onClick={() => setGrammage(nb.grammage)}
-                style={{
-                  padding: "8px 18px", borderRadius: 8,
-                  border: `1px solid ${grammage === nb.grammage ? "var(--accent-teal)" : "var(--border)"}`,
-                  background: grammage === nb.grammage ? "rgba(6,170,144,0.15)" : "transparent",
-                  color: grammage === nb.grammage ? "var(--accent-teal)" : "var(--text-secondary)",
-                  fontWeight: grammage === nb.grammage ? 600 : 400,
-                  cursor: "pointer", fontSize: 14,
-                }}
-              >
-                {nb.grammage}g
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {masterBlock && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Master values for {grammage}g
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <tbody>
-              {NUTRIENT_ROWS.map(({ label, masterKey, unit }) => {
-                const val = masterBlock[masterKey];
-                if (val === null || val === undefined) return null;
-                return (
-                  <tr key={masterKey}>
-                    <td style={{ padding: "5px 8px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{label}</td>
-                    <td style={{ padding: "5px 8px", color: "var(--text-primary)", textAlign: "right", fontVariantNumeric: "tabular-nums", borderBottom: "1px solid var(--border)" }}>
-                      {val}{unit}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {selected && grammage !== null && (
-        <button
-          onClick={() => onProceed(selected, grammage)}
-          style={{ marginTop: 24, padding: "12px 28px", background: "var(--accent-teal)", color: "#003433", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: "pointer" }}
-        >
-          Upload Label →
-        </button>
-      )}
-    </div>
-  );
+function formatSize(bytes: number) {
+  return bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.round(bytes / 1000)} KB`;
 }
-
-// ─── Step 2: Upload + Results ─────────────────────────────────────────────────
-
-function Step2({ product, grammage, onBack }: { product: Product; grammage: number; onBack: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<OCRResult | null>(null);
-  const [ocrError, setOcrError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const masterBlock = product.nutrition.find((nb) => nb.grammage === grammage);
-  const rdaBlock    = product.rda.find((rb) => rb.grammage === grammage);
-
-  const handleFile = useCallback((f: File) => {
-    setFile(f);
-    setResult(null);
-    setOcrError(null);
-    if (f.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = (e) => setPreview(e.target?.result as string);
-      reader.readAsDataURL(f);
-    } else {
-      setPreview(null);
-    }
-  }, []);
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
-  };
-
-  const handleAnalyze = async () => {
-    if (!file) return;
-    setLoading(true);
-    setOcrError(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/analyze-label", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data as OCRResult);
-    } catch (e) {
-      setOcrError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Serving size scaling
-  const labelG = result?.serving_size_g ?? null;
-  const hasServingSizeDiff = labelG != null && Math.abs(labelG - grammage) > 1;
-  const scaleFactor = hasServingSizeDiff && labelG ? grammage / labelG : 1;
-
-  // Allergen analysis
-  const detectedAllergens = detectAllergens(product.ingredients);
-  const declaredAllergens = (result?.allergens_declared || []).map((a) => a.toLowerCase());
-  const allergenIssues = detectedAllergens.filter(
-    (a) => !declaredAllergens.some((d) =>
-      d.includes(a.toLowerCase().split(" ")[0]) ||
-      a.toLowerCase().split(" ").some((w) => d.includes(w))
-    )
-  );
-
-  const hasCritical =
-    allergenIssues.length > 0 ||
-    (result && masterBlock &&
-      NUTRIENT_ROWS.some(({ masterKey, ocrKey, absFloor }) => {
-        const masterVal = (masterBlock[masterKey] as number | null) ?? 0;
-        const labelData = (result.nutrition_table?.[ocrKey] as number | null) ?? 0;
-        const ssd = parseFloat((labelData * scaleFactor).toFixed(2));
-        return calcStatus(masterVal, ssd, absFloor) === "CRITICAL";
-      }));
-
-  const thCell: React.CSSProperties = {
-    padding: "9px 12px", fontWeight: 700, fontSize: 11,
-    color: "var(--text-muted)", borderBottom: "2px solid var(--border)",
-    textTransform: "uppercase" as const, letterSpacing: "0.04em",
-    whiteSpace: "nowrap" as const, background: "var(--bg-elevated)",
-  };
-
-  return (
-    <div style={{ padding: "16px", maxWidth: 1280, margin: "0 auto" }}>
-
-      {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-        <button
-          onClick={onBack}
-          style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", color: "var(--text-secondary)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}
-        >
-          ← Back
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ margin: 0, fontSize: "clamp(16px, 4vw, 20px)", fontWeight: 700, color: "var(--text-primary)", wordBreak: "break-word" }}>
-            {product.name}
-          </h1>
-          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{grammage}g pack</span>
-        </div>
-      </div>
-
-      {/* ── LABEL UPLOAD CARD ── */}
-      <div style={{ marginBottom: 24, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "10px 12px", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)" }}>
-          Label Upload
-        </div>
-
-        {!file ? (
-          /* Drop zone */
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            onClick={() => fileInputRef.current?.click()}
-            style={{ padding: "32px 16px", textAlign: "center", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(6,170,144,0.04)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-          >
-            <div style={{ fontSize: 36 }}>📤</div>
-            <div style={{ color: "var(--text-primary)", fontWeight: 600 }}>Drop label image or PDF here</div>
-            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>JPG, PNG, or PDF supported</div>
-            <input ref={fileInputRef} type="file" accept="image/*,.pdf" style={{ display: "none" }}
-              onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
-          </div>
-        ) : result ? (
-          /* Compact bar once results are loaded — preview moves to sticky panel */
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px" }}>
-            <span style={{ fontSize: 16 }}>{preview ? "🖼️" : "📄"}</span>
-            <span style={{ flex: 1, color: "var(--text-primary)", fontSize: 13, fontWeight: 500 }}>{file.name}</span>
-            <span style={{ fontSize: 11, color: "var(--accent-teal)", fontWeight: 600 }}>✓ Analyzed</span>
-            <button
-              onClick={() => { setFile(null); setPreview(null); setResult(null); setOcrError(null); }}
-              style={{ padding: "7px 14px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}
-            >
-              Re-upload
-            </button>
-          </div>
-        ) : (
-          <div>
-            {/* Preview — centred */}
-            <div style={{ padding: 24, display: "flex", justifyContent: "center", background: "var(--bg-base)" }}>
-              {preview ? (
-                <img
-                  src={preview}
-                  alt="Label preview"
-                  style={{ maxWidth: 480, maxHeight: 360, objectFit: "contain", borderRadius: 8, border: "1px solid var(--border)" }}
-                />
-              ) : (
-                <div style={{ textAlign: "center", padding: "24px 0" }}>
-                  <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
-                  <div style={{ color: "var(--text-primary)", fontWeight: 600 }}>{file.name}</div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>PDF file</div>
-                </div>
-              )}
-            </div>
-
-            {/* File name bar + action buttons */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderTop: "1px solid var(--border)" }}>
-              <span style={{ fontSize: 16 }}>{preview ? "🖼️" : "📄"}</span>
-              <span style={{ flex: 1, color: "var(--text-primary)", fontSize: 13, fontWeight: 500 }}>{file.name}</span>
-              <button
-                onClick={() => { setFile(null); setPreview(null); setResult(null); setOcrError(null); }}
-                style={{ padding: "7px 14px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}
-              >
-                Re-upload
-              </button>
-              {!result && !loading && (
-                <button
-                  onClick={handleAnalyze}
-                  style={{ padding: "8px 20px", background: "var(--accent-teal)", color: "#003433", border: "none", borderRadius: 6, fontWeight: 700, cursor: "pointer", fontSize: 13 }}
-                >
-                  Analyze Label
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Loading skeleton ── */}
-      {loading && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
-          {Array.from({ length: 11 }).map((_, i) => (
-            <div key={i} style={{ height: 34, borderRadius: 6, background: "var(--bg-elevated)", opacity: 1 - i * 0.07, animation: "pulse 1.5s ease-in-out infinite" }} />
-          ))}
-          <div style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>Analyzing label…</div>
-        </div>
-      )}
-
-      {/* ── OCR error ── */}
-      {ocrError && (
-        <div style={{ background: "rgba(232,64,64,0.1)", border: "1px solid rgba(232,64,64,0.3)", borderRadius: 8, padding: 16, color: "var(--accent-red)", marginBottom: 24 }}>
-          OCR Error: {ocrError}
-        </div>
-      )}
-
-      {/* ── QC RESULTS ── */}
-      {result && masterBlock && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-
-            {/* Serving size banner */}
-            {hasServingSizeDiff && (
-              <div style={{ background: "rgba(255,192,0,0.08)", border: "1px solid rgba(255,192,0,0.35)", borderRadius: 8, padding: "10px 16px", color: "var(--accent-amber)", fontSize: 13 }}>
-                <strong>Serving size note: </strong>
-                Label nutrition is printed for {labelG}g. Scaled to {grammage}g for master comparison.
-              </div>
-            )}
-
-            {/* Side-by-side: printed label preview + comparison table */}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Nutrient Comparison
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
-                {file && (
-                  <div style={{ borderRadius: 8, border: "1px solid var(--border)", overflow: "hidden" }}>
-                    <LabelPreview file={file} height={300} />
-                  </div>
-                )}
-              <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid var(--border)" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...thCell, textAlign: "left" }}>Nutrient</th>
-                      <th style={{ ...thCell, textAlign: "right" }}>
-                        Master<br /><span style={{ fontWeight: 400, opacity: 0.65 }}>({grammage}g)</span>
-                      </th>
-                      <th style={{ ...thCell, textAlign: "right" }}>
-                        Label Data<br /><span style={{ fontWeight: 400, opacity: 0.65 }}>({labelG ?? grammage}g)</span>
-                      </th>
-                      <th style={{ ...thCell, textAlign: "right" }}>
-                        Serving Size Data<br /><span style={{ fontWeight: 400, opacity: 0.65 }}>({grammage}g)</span>
-                      </th>
-                      <th style={{ ...thCell, textAlign: "right" }}>%RDA</th>
-                      <th style={{ ...thCell, textAlign: "right" }}>Deviation</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {NUTRIENT_ROWS.map(({ label, masterKey, ocrKey, rdaKey, unit, absFloor }) => {
-                      const masterVal    = (masterBlock[masterKey] as number | null) ?? 0;
-                      const labelData    = (result.nutrition_table?.[ocrKey] as number | null) ?? 0;
-                      const ssd          = parseFloat((labelData * scaleFactor).toFixed(2));
-                      const rdaVal       = rdaKey ? (rdaBlock?.[rdaKey] as number | null) ?? null : null;
-                      const deviation    = masterVal !== 0 ? ((ssd - masterVal) / Math.abs(masterVal)) * 100 : null;
-                      const devFormatted = deviation != null ? `${deviation >= 0 ? "+" : ""}${deviation.toFixed(1)}%` : "—";
-                      const status       = calcStatus(masterVal, ssd, absFloor);
-                      const devColor     = status === "CRITICAL" ? "#E84040" : status === "WARNING" ? "#FFC000" : "#06AA90";
-
-                      return (
-                        <tr key={masterKey} style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "8px 12px", color: "var(--text-secondary)", fontWeight: 500 }}>{label}</td>
-                          <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-                            {masterVal}{unit}
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                            {labelData}{unit}
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>
-                            {ssd}{unit}
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "right", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
-                            {rdaVal != null ? `${rdaVal}%` : "—"}
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "right", color: devColor, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-                            {devFormatted}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              </div>
-            </div>
-
-            {/* Allergen check */}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Allergen Check
-              </div>
-              {detectedAllergens.length === 0 ? (
-                <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No allergens detected in ingredients.</div>
-              ) : (
-                <div style={{ borderRadius: 8, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        {["Allergen", "In Ingredients", "Declared on Label", "Status"].map((h) => (
-                          <th key={h} style={{ ...thCell, textAlign: "left" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detectedAllergens.map((allergen) => {
-                        const isDeclared = declaredAllergens.some((d) =>
-                          d.includes(allergen.toLowerCase().split(" ")[0]) ||
-                          allergen.toLowerCase().split(" ").some((w) => d.includes(w))
-                        );
-                        return (
-                          <tr key={allergen} style={{ borderBottom: "1px solid var(--border)" }}>
-                            <td style={{ padding: "8px 12px", color: "var(--text-primary)" }}>{allergen}</td>
-                            <td style={{ padding: "8px 12px", color: "var(--accent-teal)" }}>✓ Yes</td>
-                            <td style={{ padding: "8px 12px", color: isDeclared ? "var(--accent-teal)" : "var(--accent-red)" }}>
-                              {isDeclared ? "✓ Yes" : "✗ No"}
-                            </td>
-                            <td style={{ padding: "8px 12px" }}>
-                              <StatusChip status={isDeclared ? "PASS" : "CRITICAL"} />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Approve / Reject */}
-            <div style={{ display: "flex", gap: 12 }}>
-              <button
-                style={{ flex: 1, padding: "13px", borderRadius: 8, border: "1px solid var(--accent-red)", background: "transparent", color: "var(--accent-red)", fontWeight: 700, cursor: "pointer", fontSize: 14 }}
-              >
-                Reject
-              </button>
-              <button
-                disabled={!!hasCritical}
-                style={{
-                  flex: 3, padding: "13px", borderRadius: 8, border: "none",
-                  background: hasCritical ? "var(--bg-elevated)" : "var(--accent-teal)",
-                  color: hasCritical ? "var(--text-muted)" : "#003433",
-                  fontWeight: 700, cursor: hasCritical ? "not-allowed" : "pointer", fontSize: 14,
-                }}
-              >
-                Approve for Print ✓
-              </button>
-            </div>
-            {hasCritical && (
-              <div style={{ fontSize: 12, color: "var(--accent-red)", textAlign: "center", marginTop: -12 }}>
-                Resolve all CRITICAL issues before approving.
-              </div>
-            )}
-        </div>
-      )}
-
-      {!file && (
-        <div style={{ color: "var(--text-muted)", fontSize: 13, textAlign: "center", padding: "8px 0" }}>
-          Upload a label above to begin QC analysis.
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function LabelQCPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState<1 | 2>(1);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedGrammage, setSelectedGrammage] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selected, setSelected] = useState<Product | null>(null);
+  const [packGrams, setPackGrams] = useState<number | null>(null);
+  const [customPack, setCustomPack] = useState("");
+  const [expectedMrp, setExpectedMrp] = useState("");
+  const [version, setVersion] = useState("");
+
+  const [file, setFile] = useState<File | null>(null);
+  const [extract, setExtract] = useState<ExtractState>({ state: "idle" });
+  const [showPreview, setShowPreview] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const extractRun = useRef(0);
+
+  const [running, setRunning] = useState<"rules" | "ai" | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [report, setReport] = useState<AuditReport | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetch("/api/products")
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setProducts(data); })
+      .then((data) => {
+        if (Array.isArray(data)) setProducts(data);
+        else setLoadError(data.error || "Could not load products");
+      })
+      .catch((e) => setLoadError(String(e)))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return <div style={{ padding: 48, color: "var(--text-muted)", textAlign: "center" }}>Loading products…</div>;
-  }
+  const vocabulary = useMemo(() => buildVocabulary(products), [products]);
+  const packOptions: PackOption[] = useMemo(() => (selected ? packOptionsFor(selected) : []), [selected]);
+  const matches = useMemo(
+    () => products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 20),
+    [products, search]
+  );
 
-  if (step === 2 && selectedProduct && selectedGrammage !== null) {
-    return (
-      <Step2
-        product={selectedProduct}
-        grammage={selectedGrammage}
-        onBack={() => setStep(1)}
-      />
-    );
-  }
+  const clearReport = () => {
+    setReport(null);
+    setRunError(null);
+  };
+
+  const selectProduct = (p: Product) => {
+    setSelected(p);
+    setSearch(p.name);
+    setShowDropdown(false);
+    const opts = packOptionsFor(p);
+    const first = opts.find((o) => o.price) ?? opts[0];
+    setPackGrams(first?.grams ?? null);
+    setExpectedMrp(first?.price ? String(first.price) : "");
+    setCustomPack("");
+    clearReport();
+  };
+
+  const clearProduct = () => {
+    setSelected(null);
+    setSearch("");
+    setPackGrams(null);
+    setCustomPack("");
+    setExpectedMrp("");
+    clearReport();
+  };
+
+  const pickPack = (o: PackOption) => {
+    setPackGrams(o.grams);
+    setCustomPack("");
+    setExpectedMrp(o.price ? String(o.price) : "");
+    clearReport();
+  };
+
+  const onCustomPack = (v: string) => {
+    setCustomPack(v);
+    const n = parseFloat(v);
+    setPackGrams(n > 0 ? n : null);
+    clearReport();
+  };
+
+  const handleFile = async (f: File) => {
+    const id = ++extractRun.current;
+    setFile(f);
+    setShowPreview(false);
+    clearReport();
+    const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+    if (!isPdf) {
+      setExtract({ state: "no-text" });
+      return;
+    }
+    setExtract({ state: "reading" });
+    try {
+      const label = await extractPdfText(f);
+      if (id !== extractRun.current) return;
+      setExtract(labelHasText(label) ? { state: "ready", label } : { state: "no-text" });
+    } catch (e) {
+      if (id !== extractRun.current) return;
+      setExtract({ state: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  const clearFile = () => {
+    extractRun.current++;
+    setFile(null);
+    setExtract({ state: "idle" });
+    setShowPreview(false);
+    clearReport();
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const mrpNumber = (() => {
+    const n = parseFloat(expectedMrp);
+    return n > 0 ? n : null;
+  })();
+
+  const startReport = (r: AuditReport) => {
+    setReport(r);
+    setCollapsed(new Set(r.steps.filter((s) => ["pass", "skip"].includes(stepStatus(s))).map((s) => s.step)));
+  };
+
+  const runRules = () => {
+    if (!selected || extract.state !== "ready") return;
+    setRunning("rules");
+    setRunError(null);
+    try {
+      startReport(runRulesAudit(extract.label, buildReference(selected, packGrams, mrpNumber, vocabulary)));
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  const runAi = async () => {
+    if (!selected || !file) return;
+    setRunning("ai");
+    setRunError(null);
+    try {
+      const images = await fileToJpegs(file);
+      const form = new FormData();
+      images.forEach((blob, i) => form.append("images", blob, `label-${i + 1}.jpg`));
+      form.append(
+        "reference",
+        JSON.stringify({
+          productName: selected.name,
+          packSizeG: packGrams,
+          expectedMrp: mrpNumber,
+          version,
+          usps: selected.brand_usp,
+          ingredients: selected.ingredients,
+          nutritionText: describeNutrition(selected.nutrition),
+          allergens: selected.allergens,
+          manufacturer: selected.manufacturer,
+        })
+      );
+      const res = await fetch("/api/label-audit", { method: "POST", body: form });
+      const body = await res.text();
+      let data: { report?: AuditReport; error?: string };
+      try {
+        data = JSON.parse(body);
+      } catch {
+        throw new Error(`Server error (${res.status}). ${body.slice(0, 120)}`);
+      }
+      if (!res.ok || data.error || !data.report) throw new Error(data.error || `Server error (${res.status})`);
+      startReport(data.report);
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  const toggleStep = (n: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(n)) next.delete(n);
+      else next.add(n);
+      return next;
+    });
+
+  const counts = report
+    ? report.steps.flatMap((s) => s.checks).reduce<Record<CheckStatus, number>>((acc, c) => ({ ...acc, [c.status]: acc[c.status] + 1 }), { pass: 0, fail: 0, warn: 0, skip: 0 })
+    : null;
+
+  const canRules = !!selected && extract.state === "ready" && running === null;
+  const canAi = !!selected && !!file && extract.state !== "reading" && running === null;
 
   return (
-    <Step1
-      products={products}
-      onProceed={(product, grammage) => {
-        setSelectedProduct(product);
-        setSelectedGrammage(grammage);
-        setStep(2);
-      }}
-    />
+    <div style={{ padding: "var(--page-pad)", paddingBottom: 56, maxWidth: 820, margin: "0 auto" }}>
+      <h1 className="page-title">Label QC</h1>
+      <p className="page-sub" style={{ marginBottom: 26 }}>
+        Pick the product and pack size, upload the label, and check it against the sheet, step by step.
+      </p>
+
+      {loadError && (
+        <div role="alert" style={{ display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "#FF9C9C", marginBottom: 16, fontSize: 14 }}>
+          <Icon name="alert-circle" size={18} style={{ marginTop: 1 }} />
+          <span>Couldn&apos;t load products. {loadError}</span>
+        </div>
+      )}
+
+      {/* Product */}
+      <div className="surface" style={cardStyle}>
+        <h2 style={cardTitle}>Product</h2>
+        {selected ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "rgba(0,40,39,0.55)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "11px 13px" }}>
+            <span style={{ fontWeight: 600, fontSize: 15 }}>{selected.name}</span>
+            <button onClick={clearProduct} aria-label="Clear product" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "var(--text-muted)", fontSize: 13 }}>
+              <Icon name="x" size={14} /> Clear
+            </button>
+          </div>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <input
+              type="text"
+              placeholder={loading ? "Loading products…" : "Search product name…"}
+              value={search}
+              disabled={loading}
+              onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
+              onFocus={() => setShowDropdown(true)}
+              style={inputStyle}
+            />
+            {showDropdown && search && matches.length > 0 && (
+              <div className="fade-in" style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 6, background: "#00504d", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 18px 40px -14px rgba(0,10,9,0.85)", maxHeight: 260, overflowY: "auto", zIndex: 20, padding: 4 }}>
+                {matches.map((p) => (
+                  <div
+                    key={p.id}
+                    className="menu-item"
+                    onClick={() => selectProduct(p)}
+                    style={{ padding: "10px 12px", cursor: "pointer", fontSize: 14, borderRadius: 8 }}
+                  >
+                    <span style={{ fontWeight: 500 }}>{p.name}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 11, marginLeft: 8 }}>{p.sheet}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pack size */}
+      {selected && (
+        <div className="surface" style={cardStyle}>
+          <h2 style={cardTitle}>Pack size</h2>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            {packOptions.map((o) => {
+              const on = packGrams === o.grams && customPack === "";
+              return (
+                <button
+                  key={o.grams}
+                  onClick={() => pickPack(o)}
+                  aria-pressed={on}
+                  title={o.source === "mrp" ? "From the sheet's MRP" : o.source === "pack" ? "From the sheet's pack sizes" : "From the sheet's nutrition columns"}
+                  style={{
+                    padding: "8px 14px", borderRadius: 10, fontSize: 14, fontWeight: 500,
+                    border: `1px solid ${on ? "var(--accent-teal)" : "var(--border)"}`,
+                    background: on ? "rgba(6,170,144,0.2)" : "rgba(255,255,255,0.035)",
+                    color: on ? "var(--text-primary)" : "var(--text-secondary)",
+                  }}
+                >
+                  <span className="mono">{o.grams}g</span>{o.price ? <span style={{ color: on ? "var(--accent-teal-bright)" : "var(--text-muted)" }}> · ₹{o.price}</span> : null}
+                </button>
+              );
+            })}
+            <input
+              type="number"
+              aria-label="Other pack size in grams"
+              placeholder="Other (g)"
+              value={customPack}
+              onChange={(e) => onCustomPack(e.target.value)}
+              style={{ ...inputStyle, width: 112, padding: "8px 11px", fontSize: 14 }}
+            />
+          </div>
+          {packOptions.length === 0 && (
+            <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The sheet has no pack sizes for this product. Enter the net weight.</div>
+          )}
+        </div>
+      )}
+
+      {/* Label file */}
+      <div className="surface" style={cardStyle}>
+        <h2 style={cardTitle}>Label file</h2>
+        {!file ? (
+          <div
+            className="dropzone"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            style={{ border: "1.5px dashed var(--border-strong)", borderRadius: 12, padding: "32px 16px", textAlign: "center", cursor: "pointer", background: "rgba(0,40,39,0.35)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+          >
+            <div style={{ width: 46, height: 46, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(6,170,144,0.14)", color: "var(--accent-teal-bright)" }}>
+              <Icon name="upload" size={22} />
+            </div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>Click or drop the label here</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 13 }}>PDF or image. PDFs with selectable text are checked without AI.</div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Icon name={file.type.startsWith("image/") ? "image" : "file"} size={18} style={{ color: "var(--accent-teal-bright)" }} />
+              <span style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-all", flex: 1, minWidth: 0 }}>{file.name}</span>
+              <span className="mono" style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{formatSize(file.size)}</span>
+              <button onClick={() => setShowPreview((v) => !v)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 13 }}>
+                {showPreview ? "Hide label" : "Show label"}
+              </button>
+              <button onClick={clearFile} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 13 }}>
+                Replace
+              </button>
+            </div>
+            <div style={{ marginTop: 10, display: "flex", gap: 7, alignItems: "flex-start", fontSize: 13, color: extract.state === "ready" ? "var(--accent-teal-bright)" : "var(--text-muted)" }}>
+              {extract.state === "reading" && <span className="spin" style={{ width: 14, height: 14, marginTop: 2, borderRadius: 999, border: "2px solid rgba(255,255,255,0.18)", borderTopColor: "var(--accent-teal-bright)", flexShrink: 0 }} />}
+              {extract.state === "ready" && <Icon name="check-circle" size={16} style={{ marginTop: 1 }} />}
+              <span>
+                {extract.state === "reading" && "Reading the label text…"}
+                {extract.state === "ready" && `Text found in the PDF (${extract.label.charCount.toLocaleString()} characters). The SOP audit can run without AI.`}
+                {extract.state === "no-text" && "No selectable text in this file (an image, or a PDF with outlined text). Use AI review."}
+                {extract.state === "error" && `Couldn't read the PDF text: ${extract.message}. Try AI review.`}
+              </span>
+            </div>
+            {showPreview && (
+              <div style={{ marginTop: 12 }}>
+                <LabelPreview file={file} height={420} />
+              </div>
+            )}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,image/*"
+          style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+      </div>
+
+      {/* Optional inputs */}
+      <div className="surface" style={cardStyle}>
+        <h2 style={cardTitle}>Optional details</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+          <div>
+            <label htmlFor="mrp" style={{ display: "block", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>Expected MRP (₹), used in step 9</label>
+            <input id="mrp" type="number" value={expectedMrp} onChange={(e) => { setExpectedMrp(e.target.value); clearReport(); }} placeholder="Filled from the sheet when available" style={inputStyle} />
+          </div>
+          <div>
+            <label htmlFor="ver" style={{ display: "block", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", marginBottom: 6 }}>Label version or notes (AI review)</label>
+            <input id="ver" type="text" value={version} onChange={(e) => setVersion(e.target.value)} placeholder="e.g. v2 Jan 2025" style={inputStyle} />
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button
+          onClick={runRules}
+          disabled={!canRules}
+          style={{
+            flex: "2 1 220px", padding: "14px 16px", borderRadius: 12, border: "none", fontWeight: 700, fontSize: 15,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+            background: canRules ? "linear-gradient(180deg, #0cb89c, #06AA90)" : "rgba(255,255,255,0.05)",
+            color: canRules ? "#002d2b" : "var(--text-muted)",
+            boxShadow: canRules ? "0 12px 24px -12px rgba(6,170,144,0.85), inset 0 1px 0 rgba(255,255,255,0.25)" : "none",
+          }}
+        >
+          {running === "rules" ? "Auditing…" : (<><Icon name="check-circle" size={18} /> Run SOP audit</>)}
+        </button>
+        <button
+          onClick={runAi}
+          disabled={!canAi}
+          style={{ flex: "1 1 170px", padding: "14px 16px", borderRadius: 12, border: "1px solid var(--border-strong)", background: "transparent", color: canAi ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 600, fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+        >
+          {running === "ai" ? (<><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "var(--accent-teal-bright)" }} /> Asking AI, up to a minute</>) : (<><Icon name="sparkle" size={18} /> Run AI review</>)}
+        </button>
+      </div>
+      {extract.state === "no-text" && selected && (
+        <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The SOP audit needs a PDF with selectable text. For this file, use AI review.</div>
+      )}
+      {runError && (
+        <div role="alert" style={{ marginTop: 14, display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "#FF9C9C", fontSize: 14 }}>
+          <Icon name="alert-circle" size={18} style={{ marginTop: 1 }} />
+          <span>{runError}</span>
+        </div>
+      )}
+
+      {/* Report */}
+      {report && counts && (
+        <div className="surface fade-up" style={{ ...cardStyle, marginTop: 26 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", paddingBottom: 14, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{report.product}</h2>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 3 }}>
+                <span className="mono">{report.pack_size}</span> &middot; {report.mode === "rules" ? "Rules engine, no AI" : "AI review"}
+              </div>
+            </div>
+            <Badge status={report.overall} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 16 }}>
+            {(["pass", "fail", "warn", "skip"] as CheckStatus[]).map((s) => (
+              <div key={s} style={{ background: "rgba(0,40,39,0.5)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "10px 12px" }}>
+                <div className="mono" style={{ fontSize: 24, fontWeight: 500, color: STATUS_STYLE[s].color, lineHeight: 1.1 }}>{counts[s]}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{STATUS_STYLE[s].label}</div>
+              </div>
+            ))}
+          </div>
+
+          {report.notes.map((n, i) => (
+            <div key={i} style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>{n}</div>
+          ))}
+
+          <div style={{ marginTop: 12 }}>
+            {report.steps.map((step) => {
+              const ss = stepStatus(step);
+              const open = !collapsed.has(step.step);
+              return (
+                <div key={step.step} style={{ boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 12, marginBottom: 10, overflow: "hidden", background: "rgba(0,40,39,0.3)" }}>
+                  <button
+                    onClick={() => toggleStep(step.step)}
+                    aria-expanded={open}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(255,255,255,0.03)", border: "none", color: "inherit", textAlign: "left" }}
+                  >
+                    <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 44 }}>Step {step.step}</span>
+                    <span style={{ fontSize: 14.5, fontWeight: 600, flex: 1 }}>{step.name}</span>
+                    <Badge status={ss} small />
+                    <Icon name="chevron-down" size={16} style={{ color: "var(--text-muted)", transition: "transform 0.2s ease", transform: open ? "none" : "rotate(-90deg)" }} />
+                  </button>
+                  {open &&
+                    step.checks.map((c, i) => (
+                      <div key={i} style={{ display: "flex", gap: 11, padding: "12px 14px", borderTop: "1px solid var(--border)", alignItems: "flex-start" }}>
+                        <Icon name={STATUS_STYLE[c.status].icon} size={18} style={{ color: STATUS_STYLE[c.status].color, marginTop: 1 }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 500 }}>
+                            {c.sop_rule && (
+                              <span style={{ fontSize: 11, fontWeight: 600, background: "rgba(183,200,21,0.14)", color: "#D2E04A", padding: "1px 6px", borderRadius: 5, marginRight: 7, verticalAlign: "middle" }}>SOP</span>
+                            )}
+                            {c.label}
+                          </div>
+                          {c.status !== "pass" && c.expected && (
+                            <div style={{ fontSize: 13, marginTop: 4, wordBreak: "break-word" }}>
+                              <span style={{ color: "var(--text-muted)" }}>Expected </span>
+                              <span style={{ color: "var(--accent-teal-bright)" }}>{c.expected}</span>
+                            </div>
+                          )}
+                          {c.found && (
+                            <div style={{ fontSize: 13, marginTop: 2, wordBreak: "break-word" }}>
+                              <span style={{ color: "var(--text-muted)" }}>On label </span>
+                              <span style={{ color: c.status === "fail" ? "#FF8A8A" : c.status === "pass" ? "var(--accent-teal-bright)" : "var(--text-secondary)" }}>{c.found}</span>
+                            </div>
+                          )}
+                          {c.note && <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{c.note}</div>}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

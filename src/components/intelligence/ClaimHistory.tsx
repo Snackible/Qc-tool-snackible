@@ -23,15 +23,15 @@ export default function ClaimHistory({ history, onSelect, onClear }: Props) {
   if (history.length === 0) return null;
 
   return (
-    <div className="bg-white border border-[#DCE8E0] rounded-xl p-4">
+    <div className="surface p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-[#7A9186]" />
-          <h3 className="text-sm font-bold text-[#1A2B22]">Search History</h3>
+          <Clock className="w-4 h-4 text-[var(--text-muted)]" />
+          <h3 className="text-sm font-bold text-[var(--text-primary)]">Search history</h3>
         </div>
         <button
           onClick={onClear}
-          className="flex items-center gap-1 text-xs text-[#7A9186] hover:text-red-500 transition-colors"
+          className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[#FF9C9C] transition-colors"
         >
           <Trash2 className="w-3 h-3" />
           Clear
@@ -42,18 +42,18 @@ export default function ClaimHistory({ history, onSelect, onClear }: Props) {
           <button
             key={i}
             onClick={() => onSelect(item)}
-            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F5FAF7] transition-colors text-left group"
+            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[rgba(255,255,255,0.04)] transition-colors text-left group"
           >
-            <div className="w-8 h-8 rounded-lg bg-[#EAF3DE] flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-[#2D6A4F]">{item.competitors.length}</span>
+            <div className="w-8 h-8 rounded-lg bg-[rgba(6,170,144,0.14)] flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-bold text-[var(--accent-teal-bright)]">{item.competitors.length}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-[#1A2B22] truncate">"{item.keyword}"</p>
-              <p className="text-xs text-[#7A9186]">
+              <p className="text-sm font-semibold text-[var(--text-primary)] truncate">"{item.keyword}"</p>
+              <p className="text-xs text-[var(--text-muted)]">
                 {item.category} · {item.region} · {timeAgo(item.timestamp)}
               </p>
             </div>
-            <ChevronRight className="w-4 h-4 text-[#B0C4BB] group-hover:text-[#2D6A4F] transition-colors flex-shrink-0" />
+            <ChevronRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--accent-teal-bright)] transition-colors flex-shrink-0" />
           </button>
         ))}
       </div>

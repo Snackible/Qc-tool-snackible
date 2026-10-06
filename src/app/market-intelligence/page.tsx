@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import MarketSearch, { MarketIntelResult } from "../../components/intelligence/MarketSearch";
 import CompetitorResults from "../../components/intelligence/CompetitorResults";
 import ClaimHistory from "../../components/intelligence/ClaimHistory";
+import Icon from "../../components/ui/Icon";
 
 const HISTORY_KEY = "snackible_market_history";
 
@@ -34,38 +35,30 @@ export default function MarketIntelligencePage() {
   }
 
   return (
-    <div
-      style={{
-        padding: "16px",
-        minHeight: "100vh",
-        background: "var(--bg-base)",
-      }}
-    >
-      <h1 style={{ fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
-        Market Intelligence
-      </h1>
-      <p style={{ color: "var(--text-muted)", marginBottom: 20, fontSize: "13px" }}>
+    <div style={{ padding: "var(--page-pad)", paddingBottom: 56 }}>
+      <h1 className="page-title">Market intelligence</h1>
+      <p className="page-sub" style={{ marginBottom: 22 }}>
         Scan quick-commerce platforms for competitor products and claims.
       </p>
 
       {/* Coming Soon banner */}
       <div
+        role="note"
         style={{
           background: "rgba(255,192,0,0.1)",
-          border: "1px solid rgba(255,192,0,0.3)",
-          borderRadius: 10,
-          padding: "12px 18px",
-          color: "var(--accent-amber)",
-          fontSize: 13,
-          fontWeight: 600,
+          boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)",
+          borderRadius: 12,
+          padding: "12px 16px",
+          color: "#FFD04D",
+          fontSize: 14,
           marginBottom: 24,
           display: "flex",
-          alignItems: "center",
-          gap: 8,
+          alignItems: "flex-start",
+          gap: 10,
         }}
       >
-        <span>⚠</span>
-        <span>Coming Soon — Live scraping integration is under development. Results are AI-generated simulations.</span>
+        <Icon name="alert" size={17} style={{ marginTop: 2 }} />
+        <span><strong style={{ fontWeight: 600 }}>Coming soon.</strong> Live scraping is still in development, so results are AI-generated simulations.</span>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -73,15 +66,12 @@ export default function MarketIntelligencePage() {
 
         {isLoading && (
           <div
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: 40,
-              textAlign: "center",
-            }}
+            className="surface"
+            role="status"
+            style={{ padding: 40, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
           >
-            <div style={{ color: "var(--text-secondary)", fontWeight: 600, marginBottom: 8 }}>
+            <span className="spin" style={{ width: 22, height: 22, borderRadius: 999, border: "2.5px solid rgba(255,255,255,0.16)", borderTopColor: "var(--accent-teal-bright)", marginBottom: 6 }} />
+            <div style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600 }}>
               Scanning quick-commerce platforms…
             </div>
             <div style={{ color: "var(--text-muted)", fontSize: 12 }}>

@@ -1,43 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { Star, TrendingUp, Lightbulb, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { Star, TrendingUp, Lightbulb, AlertTriangle, ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
 import { MarketIntelResult, MarketCompetitor, SIAnalysisItem } from "./MarketSearch";
 import { cn } from "../../lib/utils";
 
 const PLATFORMS = ["All", "Blinkit", "Zepto", "BigBasket", "SwiggyInstamart", "Amazon"] as const;
 
 const PLATFORM_COLORS: Record<string, string> = {
-  Blinkit: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  Zepto: "bg-purple-100 text-purple-800 border-purple-200",
-  BigBasket: "bg-green-100 text-green-800 border-green-200",
-  SwiggyInstamart: "bg-orange-100 text-orange-800 border-orange-200",
-  Amazon: "bg-blue-100 text-blue-800 border-blue-200",
+  Blinkit: "bg-[rgba(255,192,0,0.12)] text-[#FFD04D] border-[rgba(255,192,0,0.3)]",
+  Zepto: "bg-[rgba(183,200,21,0.12)] text-[#D2E04A] border-[rgba(183,200,21,0.3)]",
+  BigBasket: "bg-[rgba(6,170,144,0.15)] text-[#5FE0C8] border-[rgba(6,170,144,0.35)]",
+  SwiggyInstamart: "bg-[rgba(232,64,64,0.13)] text-[#FF9C9C] border-[rgba(232,64,64,0.32)]",
+  Amazon: "bg-[rgba(169,203,202,0.12)] text-[#A9CBCA] border-[rgba(169,203,202,0.28)]",
 };
 
 const SENTIMENT_COLORS: Record<string, string> = {
-  positive: "text-green-700 bg-green-50 border-green-200",
-  negative: "text-red-700 bg-red-50 border-red-200",
-  neutral: "text-[#7A9186] bg-[#F5FAF7] border-[#DCE8E0]",
+  positive: "text-[#5FE0C8] bg-[rgba(6,170,144,0.15)] border-[rgba(6,170,144,0.35)]",
+  negative: "text-[#FF9C9C] bg-[rgba(232,64,64,0.13)] border-[rgba(232,64,64,0.32)]",
+  neutral: "text-[var(--text-muted)] bg-[rgba(255,255,255,0.05)] border-[var(--border)]",
 };
 
 const ALIGNMENT_COLORS: Record<string, string> = {
-  High: "text-green-700 bg-green-50 border-green-300",
-  Medium: "text-amber-700 bg-amber-50 border-amber-300",
-  Low: "text-red-700 bg-red-50 border-red-300",
+  High: "text-[#5FE0C8] bg-[rgba(6,170,144,0.15)] border-[rgba(6,170,144,0.4)]",
+  Medium: "text-[#FFD04D] bg-[rgba(255,192,0,0.12)] border-[rgba(255,192,0,0.38)]",
+  Low: "text-[#FF9C9C] bg-[rgba(232,64,64,0.13)] border-[rgba(232,64,64,0.38)]",
 };
 
 function StarRating({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1">
-      <Star className="w-3 h-3 fill-[#FBAE25] text-[#FBAE25]" />
-      <span className="text-xs font-mono font-bold text-[#1A2B22]">{rating.toFixed(1)}</span>
+      <Star className="w-3 h-3 fill-[var(--accent-amber)] text-[var(--accent-amber)]" />
+      <span className="text-xs font-mono font-bold text-[var(--text-primary)]">{rating.toFixed(1)}</span>
     </div>
   );
 }
 
 function SIScorePill({ score }: { score: number }) {
-  const color = score >= 4 ? "text-green-700 bg-green-50" : score >= 3 ? "text-amber-700 bg-amber-50" : "text-red-700 bg-red-50";
+  const color = score >= 4 ? "text-[#5FE0C8] bg-[rgba(6,170,144,0.15)]" : score >= 3 ? "text-[#FFD04D] bg-[rgba(255,192,0,0.13)]" : "text-[#FF9C9C] bg-[rgba(232,64,64,0.13)]";
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold font-mono", color)}>
       SI {score.toFixed(1)}
@@ -48,11 +48,11 @@ function SIScorePill({ score }: { score: number }) {
 function CompetitorCard({ competitor }: { competitor: MarketCompetitor }) {
   const [showReviews, setShowReviews] = useState(false);
   return (
-    <div className="bg-white border border-[#DCE8E0] rounded-xl p-4 hover:border-[#2D6A4F]/40 transition-colors">
+    <div className="surface p-4 hover:border-[var(--border-strong)] transition-colors">
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <p className="text-xs font-bold text-[#2D6A4F] uppercase tracking-wide">{competitor.brand}</p>
-          <p className="text-sm font-semibold text-[#1A2B22] leading-tight mt-0.5">{competitor.product_name}</p>
+          <p className="text-xs font-bold text-[var(--accent-teal-bright)]">{competitor.brand}</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)] leading-tight mt-0.5">{competitor.product_name}</p>
         </div>
         <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap", PLATFORM_COLORS[competitor.platform])}>
           {competitor.platform === "SwiggyInstamart" ? "Swiggy" : competitor.platform}
@@ -60,17 +60,17 @@ function CompetitorCard({ competitor }: { competitor: MarketCompetitor }) {
       </div>
 
       <div className="flex items-center gap-3 mb-3">
-        <span className="text-base font-bold text-[#1A2B22]">₹{competitor.price}</span>
-        <span className="text-xs text-[#7A9186]">{competitor.pack_size}</span>
+        <span className="text-base font-bold text-[var(--text-primary)]">₹{competitor.price}</span>
+        <span className="text-xs text-[var(--text-muted)]">{competitor.pack_size}</span>
         <StarRating rating={competitor.rating} />
-        <span className="text-xs text-[#7A9186] ml-auto">
+        <span className="text-xs text-[var(--text-muted)] ml-auto">
           ₹{Math.round((competitor.price / parseFloat(competitor.pack_size)) * 100)}/100g
         </span>
       </div>
 
       <div className="flex flex-wrap gap-1 mb-3">
         {competitor.claims.map((claim) => (
-          <span key={claim} className="text-xs px-2 py-0.5 bg-[#EAF3DE] text-[#2D6A4F] rounded-full border border-[#C5DFAC]">
+          <span key={claim} className="text-xs px-2 py-0.5 bg-[rgba(6,170,144,0.14)] text-[var(--accent-teal-bright)] rounded-full border border-[rgba(6,170,144,0.28)]">
             {claim}
           </span>
         ))}
@@ -78,7 +78,7 @@ function CompetitorCard({ competitor }: { competitor: MarketCompetitor }) {
 
       <button
         onClick={() => setShowReviews(!showReviews)}
-        className="flex items-center gap-1 text-xs text-[#7A9186] hover:text-[#2D6A4F] transition-colors"
+        className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent-teal-bright)] transition-colors"
       >
         {showReviews ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         {competitor.sample_reviews.length} customer reviews
@@ -99,11 +99,11 @@ function CompetitorCard({ competitor }: { competitor: MarketCompetitor }) {
 
 function SIAnalysisRow({ item }: { item: SIAnalysisItem }) {
   return (
-    <div className="p-4 border border-[#DCE8E0] rounded-xl bg-white">
+    <div className="surface p-4">
       <div className="flex items-start justify-between gap-3 mb-2">
         <div>
-          <p className="text-xs text-[#7A9186] font-medium">{item.brand}</p>
-          <p className="text-sm font-semibold text-[#1A2B22]">"{item.competitor_claim}"</p>
+          <p className="text-xs text-[var(--text-muted)] font-medium">{item.brand}</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">"{item.competitor_claim}"</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <SIScorePill score={item.si_score} />
@@ -115,15 +115,15 @@ function SIAnalysisRow({ item }: { item: SIAnalysisItem }) {
       {item.risk_flags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {item.risk_flags.map((f) => (
-            <span key={f} className="flex items-center gap-1 text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+            <span key={f} className="flex items-center gap-1 text-xs px-2 py-0.5 bg-[rgba(255,192,0,0.12)] text-[#FFD04D] rounded-full border border-[rgba(255,192,0,0.3)]">
               <AlertTriangle className="w-3 h-3" />
               {f}
             </span>
           ))}
         </div>
       )}
-      <p className="text-xs text-[#4A6358] bg-[#EAF3DE] rounded-lg p-2">
-        <span className="font-semibold text-[#2D6A4F]">Snackible edge: </span>
+      <p className="text-xs text-[var(--text-secondary)] bg-[rgba(6,170,144,0.14)] rounded-lg p-2">
+        <span className="font-semibold text-[var(--accent-teal-bright)]">Snackible edge: </span>
         {item.snackible_advantage}
       </p>
     </div>
@@ -147,16 +147,16 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
           <span className={cn(
             "text-xs px-3 py-1 rounded-full border font-medium",
             result.dataSource === "scraper"
-              ? "bg-green-50 text-green-700 border-green-200"
+              ? "bg-[rgba(6,170,144,0.15)] text-[#5FE0C8] border-[rgba(6,170,144,0.35)]"
               : result.dataSource === "apify"
-              ? "bg-blue-50 text-blue-700 border-blue-200"
-              : "bg-[#FEF3D8] text-amber-700 border-amber-200"
+              ? "bg-[rgba(169,203,202,0.12)] text-[#A9CBCA] border-[rgba(169,203,202,0.28)]"
+              : "bg-[rgba(255,192,0,0.12)] text-[#FFD04D] border-[rgba(255,192,0,0.3)]"
           )}>
-            {result.dataSource === "scraper" && "● Live scraped data"}
-            {result.dataSource === "apify" && "● Apify actor data"}
-            {result.dataSource === "claude" && "◎ AI-generated data (add SCRAPER_URL to use live scraping)"}
+            {result.dataSource === "scraper" && "Live scraped data"}
+            {result.dataSource === "apify" && "Apify actor data"}
+            {result.dataSource === "claude" && "AI-generated data (add SCRAPER_URL to use live scraping)"}
           </span>
-          <span className="text-xs text-[#7A9186]">
+          <span className="text-xs text-[var(--text-muted)]">
             Results for "{result.keyword}" · {result.category} · {result.region}
           </span>
         </div>
@@ -164,51 +164,51 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
 
       {/* Market Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-[#DCE8E0] rounded-xl p-3 text-center">
-          <p className="text-xl font-bold font-mono text-[#2D6A4F]">{result.competitors.length}</p>
-          <p className="text-[10px] text-[#7A9186] mt-0.5">Competitors Found</p>
+        <div className="surface p-3 text-center">
+          <p className="text-xl font-bold font-mono text-[var(--accent-teal-bright)]">{result.competitors.length}</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Competitors found</p>
         </div>
-        <div className="bg-white border border-[#DCE8E0] rounded-xl p-3 text-center">
-          <p className="text-xl font-bold font-mono text-[#2D6A4F]">₹{market_summary.avg_price}</p>
-          <p className="text-[10px] text-[#7A9186] mt-0.5">Avg Market Price</p>
+        <div className="surface p-3 text-center">
+          <p className="text-xl font-bold font-mono text-[var(--accent-teal-bright)]">₹{market_summary.avg_price}</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Average market price</p>
         </div>
-        <div className="bg-white border border-[#DCE8E0] rounded-xl p-3 text-center">
-          <p className="text-xl font-bold font-mono text-[#FBAE25]">
+        <div className="surface p-3 text-center">
+          <p className="text-xl font-bold font-mono text-[var(--accent-amber)]">
             {market_summary.sentiment_breakdown.positive}%
           </p>
-          <p className="text-[10px] text-[#7A9186] mt-0.5">Positive Sentiment</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Positive sentiment</p>
         </div>
-        <div className="bg-white border border-[#DCE8E0] rounded-xl p-3 text-center">
-          <p className="text-xl font-bold font-mono text-[#2D6A4F]">{market_summary.white_space.length}</p>
-          <p className="text-[10px] text-[#7A9186] mt-0.5">White Space Gaps</p>
+        <div className="surface p-3 text-center">
+          <p className="text-xl font-bold font-mono text-[var(--accent-teal-bright)]">{market_summary.white_space.length}</p>
+          <p className="text-[10px] text-[var(--text-muted)] mt-0.5">White space gaps</p>
         </div>
       </div>
 
       {/* Dominant Claims + White Space */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white border border-[#DCE8E0] rounded-xl p-4">
+        <div className="surface p-4">
           <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-[#2D6A4F]" />
-            <p className="text-xs font-bold text-[#1A2B22] uppercase tracking-wide">Dominant Market Claims</p>
+            <TrendingUp className="w-4 h-4 text-[var(--accent-teal-bright)]" />
+            <p className="text-xs font-bold text-[var(--text-primary)]">Dominant market claims</p>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {market_summary.dominant_claims.map((c) => (
-              <span key={c} className="text-xs px-2.5 py-1 bg-[#F5FAF7] border border-[#DCE8E0] text-[#4A6358] rounded-full">
+              <span key={c} className="text-xs px-2.5 py-1 bg-[rgba(255,255,255,0.04)] border border-[var(--border)] text-[var(--text-secondary)] rounded-full">
                 {c}
               </span>
             ))}
           </div>
         </div>
-        <div className="bg-white border border-[#DCE8E0] rounded-xl p-4">
+        <div className="surface p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Lightbulb className="w-4 h-4 text-[#FBAE25]" />
-            <p className="text-xs font-bold text-[#1A2B22] uppercase tracking-wide">White Space Opportunities</p>
+            <Lightbulb className="w-4 h-4 text-[var(--accent-amber)]" />
+            <p className="text-xs font-bold text-[var(--text-primary)]">White space opportunities</p>
           </div>
           <div className="space-y-1.5">
             {market_summary.white_space.map((w) => (
-              <div key={w} className="flex items-start gap-2 text-xs p-2 bg-[#FEF3D8] rounded-lg border border-[#FBAE25]/30">
-                <span className="text-[#FBAE25] font-bold flex-shrink-0">→</span>
-                <span className="text-[#4A6358]">{w}</span>
+              <div key={w} className="flex items-start gap-2 text-xs p-2 bg-[rgba(255,192,0,0.1)] rounded-lg border border-[rgba(255,192,0,0.3)]">
+                <ArrowRight className="w-3.5 h-3.5 text-[var(--accent-amber)] flex-shrink-0 mt-0.5" />
+                <span className="text-[var(--text-secondary)]">{w}</span>
               </div>
             ))}
           </div>
@@ -216,8 +216,8 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
       </div>
 
       {/* Platform Tabs + Product Grid */}
-      <div className="bg-white border border-[#DCE8E0] rounded-xl overflow-hidden">
-        <div className="flex items-center gap-1 p-2 border-b border-[#DCE8E0] bg-[#F5FAF7] overflow-x-auto">
+      <div className="surface overflow-hidden">
+        <div className="flex items-center gap-1 p-2 border-b border-[var(--border)] bg-[rgba(255,255,255,0.04)] overflow-x-auto">
           {PLATFORMS.map((p) => {
             const count = p === "All" ? result.competitors.length : result.competitors.filter((c) => c.platform === p).length;
             if (count === 0 && p !== "All") return null;
@@ -228,12 +228,12 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap",
                   activeTab === p
-                    ? "bg-[#2D6A4F] text-white"
-                    : "text-[#7A9186] hover:bg-[#EAF3DE] hover:text-[#2D6A4F]"
+                    ? "bg-[var(--accent-teal)] text-[#002d2b]"
+                    : "text-[var(--text-muted)] hover:bg-[rgba(6,170,144,0.14)] hover:text-[var(--accent-teal-bright)]"
                 )}
               >
                 {p === "SwiggyInstamart" ? "Swiggy" : p}
-                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", activeTab === p ? "bg-white/20" : "bg-[#DCE8E0]")}>
+                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", activeTab === p ? "bg-[rgba(0,45,43,0.25)]" : "bg-[rgba(255,255,255,0.09)]")}>
                   {count}
                 </span>
               </button>
@@ -249,15 +249,15 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
       </div>
 
       {/* SI Analysis */}
-      <div className="bg-white border border-[#DCE8E0] rounded-xl p-4">
+      <div className="surface p-4">
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-6 h-6 rounded-lg bg-[#EAF3DE] flex items-center justify-center">
-            <TrendingUp className="w-3.5 h-3.5 text-[#2D6A4F]" />
+          <div className="w-6 h-6 rounded-lg bg-[rgba(6,170,144,0.14)] flex items-center justify-center">
+            <TrendingUp className="w-3.5 h-3.5 text-[var(--accent-teal-bright)]" />
           </div>
-          <h3 className="font-bold text-[#1A2B22] text-sm" style={{ fontFamily: "Raleway, sans-serif" }}>
-            Competitor Claim SI Analysis
+          <h3 className="font-bold text-[var(--text-primary)] text-sm">
+            Competitor claim SI analysis
           </h3>
-          <span className="text-xs text-[#7A9186] ml-auto">How do competitor claims score against Snackible's brand?</span>
+          <span className="text-xs text-[var(--text-muted)] ml-auto">How do competitor claims score against Snackible's brand?</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {result.si_analysis.map((item, i) => (

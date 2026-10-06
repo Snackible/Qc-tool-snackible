@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Product, NutritionBlock, RDABlock, ProductStatus } from "../../lib/types";
 import StatusDropdown from "../../components/shared/StatusDropdown";
 import AddProductModal from "../../components/products/AddProductModal";
+import Icon from "../../components/ui/Icon";
 
 const NUTRIENT_ROWS: { label: string; key: keyof NutritionBlock; unit: string }[] = [
   { label: "Energy", key: "energy_kcal", unit: "kcal" },
@@ -37,20 +38,20 @@ function fmtVal(val: number | null | undefined, unit: string): string {
   return `${val}${unit}`;
 }
 
-function Chip({ label, color }: { label: string; color: string }) {
+// claim tag: squarer than a pill so it reads as a label rather than a button
+function Chip({ label }: { label: string }) {
   return (
     <span
       style={{
         display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 999,
-        fontSize: 11,
+        padding: "3px 8px",
+        borderRadius: 6,
+        fontSize: 12,
         fontWeight: 500,
-        background: `${color}26`,
-        color,
-        marginRight: 4,
-        marginBottom: 4,
-        whiteSpace: "nowrap",
+        background: "rgba(6,170,144,0.11)",
+        boxShadow: "inset 0 0 0 1px rgba(6,170,144,0.2)",
+        color: "var(--accent-teal-bright)",
+        lineHeight: 1.35,
       }}
     >
       {label}
@@ -60,23 +61,13 @@ function Chip({ label, color }: { label: string; color: string }) {
 
 function SheetBadge({ sheet }: { sheet: string }) {
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 4,
-        fontSize: 10,
-        fontWeight: 600,
-        background: "rgba(6,170,144,0.12)",
-        color: "var(--accent-teal)",
-        letterSpacing: "0.03em",
-        textTransform: "uppercase",
-      }}
-    >
+    <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: "var(--text-secondary)" }}>
       {sheet}
     </span>
   );
 }
+
+const sectionLabel: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6 };
 
 function emptyNutritionBlock(grammage: number): NutritionBlock {
   return {
@@ -216,8 +207,8 @@ function NutritionSection({
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          Nutritional Information
+        <div style={{ ...sectionLabel, marginBottom: 0, fontFamily: "var(--font-display)", fontSize: 15, color: "var(--text-primary)", fontWeight: 600 }}>
+          Nutritional information
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           {!editMode && product.hasCustomNutrition && (
@@ -273,9 +264,10 @@ function NutritionSection({
                         <button
                           onClick={() => removeColumn(nb.grammage)}
                           title="Remove this pack size"
-                          style={{ background: "none", border: "none", color: "var(--accent-red)", cursor: "pointer", fontSize: 12, padding: 0, lineHeight: 1 }}
+                          aria-label={`Remove ${nb.grammage}g column`}
+                          style={{ background: "none", border: "none", color: "var(--accent-red)", cursor: "pointer", padding: 0, lineHeight: 1, display: "inline-flex" }}
                         >
-                          ✕
+                          <Icon name="x" size={13} />
                         </button>
                       )}
                     </div>
@@ -283,8 +275,8 @@ function NutritionSection({
                 ))}
                 {editMode && (
                   <th style={{ padding: "8px 6px", borderBottom: "1px solid var(--border)" }}>
-                    <button onClick={addColumn} title="Add a pack size" style={{ ...btnStyle, padding: "2px 8px" }}>
-                      + Add
+                    <button onClick={addColumn} title="Add a pack size" style={{ ...btnStyle, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Icon name="plus" size={12} /> Add
                     </button>
                   </th>
                 )}
@@ -439,78 +431,85 @@ function ProductDrawer({
     <>
       {/* Overlay */}
       <div
+        className="fade-in"
         onClick={onClose}
-        style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40,
-        }}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,16,15,0.6)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex: 140 }}
       />
       {/* Drawer */}
-      <div
+      <aside
+        className="slide-in-right"
+        aria-label={product.name}
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0,
-          width: "min(100vw, 480px)", background: "var(--bg-surface)",
-          borderLeft: "1px solid var(--border)",
-          zIndex: 50, overflowY: "auto", padding: "16px",
-          display: "flex", flexDirection: "column", gap: 16,
+          width: "min(100vw, 520px)",
+          background: "linear-gradient(180deg, #004845, #003836)",
+          borderLeft: "1px solid var(--border-strong)",
+          boxShadow: "-28px 0 60px -24px rgba(0,0,0,0.75)",
+          zIndex: 150, overflowY: "auto", padding: "22px 22px 32px",
+          display: "flex", flexDirection: "column", gap: 20,
         }}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--text-primary)", flex: 1, marginRight: 12 }}>
-            {product.name}
-          </h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ marginBottom: 8 }}><SheetBadge sheet={product.sheet} /></div>
+            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600, lineHeight: 1.15, color: "var(--text-primary)" }}>
+              {product.name}
+            </h2>
+          </div>
           <button
             onClick={onClose}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: "var(--text-muted)", fontSize: 20, padding: 4, lineHeight: 1,
-            }}
+            aria-label="Close"
+            style={{ flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
           >
-            ✕
+            <Icon name="x" size={18} />
           </button>
         </div>
 
         {/* USP chips */}
         {product.brand_usp.length > 0 && (
-          <div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {product.brand_usp.map((usp, i) => (
-              <Chip key={i} label={usp} color="var(--accent-teal)" />
+              <Chip key={i} label={usp} />
             ))}
           </div>
         )}
 
-        {/* Sheet + MRP row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <SheetBadge sheet={product.sheet} />
-          {product.mrp && (
-            <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>
-              MRP: <strong style={{ color: "var(--text-primary)" }}>{product.mrp}</strong>
-            </span>
-          )}
-          {packSizes.length > 0 && (
-            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              {packSizes.join(" · ")}
-            </span>
-          )}
-        </div>
+        {/* MRP + pack sizes */}
+        {(product.mrp || packSizes.length > 0) && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 20, color: "var(--text-secondary)", fontSize: 13.5 }}>
+            {product.mrp && (
+              <div>
+                <div style={sectionLabel}>MRP</div>
+                <div style={{ color: "var(--text-primary)", fontWeight: 500, whiteSpace: "pre-line" }}>{product.mrp}</div>
+              </div>
+            )}
+            {packSizes.length > 0 && (
+              <div>
+                <div style={sectionLabel}>Pack sizes</div>
+                <div className="mono" style={{ color: "var(--text-primary)" }}>{packSizes.join(" · ")}</div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Allergens */}
         {product.allergens && (
           <div style={{
-            background: "rgba(232,64,64,0.08)", borderRadius: 8,
-            padding: "10px 14px", border: "1px solid rgba(232,64,64,0.2)",
+            background: "rgba(232,64,64,0.09)", borderRadius: 10,
+            padding: "12px 14px", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.26)",
           }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent-red)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Allergens
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#FF9C9C", marginBottom: 4 }}>
+              <Icon name="alert" size={14} /> Allergens
             </div>
-            <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{product.allergens}</div>
+            <div style={{ color: "var(--text-secondary)", fontSize: 13.5 }}>{product.allergens}</div>
           </div>
         )}
 
         {/* Ingredients */}
         {product.ingredients && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <div style={sectionLabel}>
               Ingredients
             </div>
             <div
@@ -545,87 +544,74 @@ function ProductDrawer({
         />
 
         {/* Manufacturer + Shelf Life */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
           {product.manufacturer && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Manufacturer
-              </div>
-              <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>{product.manufacturer}</div>
+              <div style={sectionLabel}>Manufacturer</div>
+              <div style={{ color: "var(--text-secondary)", fontSize: 13, whiteSpace: "pre-line" }}>{product.manufacturer.trim()}</div>
             </div>
           )}
           {product.shelf_life && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Shelf Life
-              </div>
-              <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>{product.shelf_life}</div>
+              <div style={sectionLabel}>Shelf life</div>
+              <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{product.shelf_life}</div>
             </div>
           )}
         </div>
-      </div>
+      </aside>
     </>
   );
 }
 
 function ProductCard({
   product,
+  index,
   onClick,
   onStatusChange,
 }: {
   product: Product;
+  index: number;
   onClick: () => void;
   onStatusChange: (product: Product, status: ProductStatus) => Promise<void>;
 }) {
   const packSizes: string[] = [];
   if (product.small_pack_g) packSizes.push(`${product.small_pack_g}g`);
   if (product.large_pack_g) packSizes.push(`${product.large_pack_g}g`);
+  const extra = product.brand_usp.length - 3;
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      style={{
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 12,
-        padding: "16px",
-        cursor: "pointer",
-        transition: "border-color 0.15s, background 0.15s",
-        position: "relative",
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick();
+        }
       }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "rgba(6,170,144,0.4)";
-        (e.currentTarget as HTMLDivElement).style.background = "var(--bg-elevated)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
-        (e.currentTarget as HTMLDivElement).style.background = "var(--bg-surface)";
-      }}
+      className="surface card-lift fade-up"
+      style={{ ["--i" as string]: Math.min(index, 14), padding: 18, cursor: "pointer", display: "flex", flexDirection: "column", gap: 14, minHeight: 168 }}
     >
-      <div style={{ fontWeight: 600, fontSize: 15, color: "var(--text-primary)", marginBottom: 10, lineHeight: 1.3 }}>
-        {product.name}
+      <div>
+        <div className="eyebrow">{product.sheet}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 18, lineHeight: 1.2, letterSpacing: "-0.02em", marginTop: 5 }}>
+          {product.name}
+        </div>
       </div>
 
-      {/* USP chips (max 3) */}
-      <div style={{ marginBottom: 10 }}>
-        {product.brand_usp.slice(0, 3).map((usp, i) => (
-          <Chip key={i} label={usp} color="var(--accent-teal)" />
-        ))}
-      </div>
-
-      {/* Pack sizes */}
-      {packSizes.length > 0 && (
-        <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 10 }}>
-          {packSizes.join(" · ")}
+      {product.brand_usp.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {product.brand_usp.slice(0, 3).map((usp, i) => (
+            <Chip key={i} label={usp} />
+          ))}
+          {extra > 0 && <span style={{ fontSize: 12, color: "var(--text-muted)", alignSelf: "center" }}>+{extra} more</span>}
         </div>
       )}
 
-      {/* Status dropdown bottom right */}
-      <div style={{ position: "absolute", bottom: 14, right: 14 }}>
-        <StatusDropdown
-          value={product.status}
-          onChange={(status) => onStatusChange(product, status)}
-        />
+      <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span className="mono" style={{ color: "var(--text-secondary)", fontSize: 12.5 }}>{packSizes.length ? packSizes.join(" · ") : "No pack size"}</span>
+        <StatusDropdown value={product.status} onChange={(status) => onStatusChange(product, status)} />
       </div>
     </div>
   );
@@ -732,86 +718,82 @@ export default function ProductsPage() {
   });
 
   return (
-    <div style={{ padding: "16px", minHeight: "100vh" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+    <div style={{ padding: "var(--page-pad)", paddingBottom: 56 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: "clamp(18px, 5vw, 22px)", fontWeight: 700, color: "var(--text-primary)" }}>
-            Product Library
-          </h1>
-          <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 13 }}>
-            {loading ? "Loading…" : `${filtered.length} products`}
+          <h1 className="page-title">Product library</h1>
+          <p className="page-sub">
+            {loading ? "Loading products…" : `${filtered.length} of ${products.length} products`}
           </p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
           style={{
-            padding: "10px 18px", borderRadius: 8, border: "none",
-            background: "var(--accent-teal)", color: "#003433",
-            fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "11px 18px", borderRadius: 10, border: "none",
+            background: "linear-gradient(180deg, #0cb89c, #06AA90)", color: "#002d2b",
+            boxShadow: "0 10px 22px -10px rgba(6,170,144,0.8), inset 0 1px 0 rgba(255,255,255,0.25)",
+            fontWeight: 700, fontSize: 14, whiteSpace: "nowrap",
           }}
         >
-          + Add Product
+          <Icon name="plus" size={16} strokeWidth={2} /> Add product
         </button>
       </div>
 
       {/* Search */}
-      <input
-        type="text"
-        placeholder="Search products or claims…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{
-          width: "100%",
-          padding: "10px 16px",
-          borderRadius: 8,
-          border: "1px solid var(--border)",
-          background: "var(--bg-elevated)",
-          color: "var(--text-primary)",
-          fontSize: 14,
-          marginBottom: 16,
-          outline: "none",
-        }}
-      />
+      <div style={{ position: "relative", marginBottom: 14 }}>
+        <Icon name="search" size={18} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }} />
+        <input
+          type="search"
+          aria-label="Search products or claims"
+          placeholder="Search products or claims"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "13px 16px 13px 42px",
+            borderRadius: 12,
+            border: "1px solid var(--border)",
+            background: "rgba(0, 40, 39, 0.55)",
+            color: "var(--text-primary)",
+            fontSize: 15,
+            outline: "none",
+          }}
+        />
+      </div>
 
-      {/* Sheet filter chips */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 24 }}>
+      {/* Category filters */}
+      <div role="group" aria-label="Filter by category" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 28 }}>
         {sheets.map((sheet) => {
           const isActive = activeSheets.has(sheet);
+          const count = products.filter((p) => p.sheet === sheet).length;
           return (
             <button
               key={sheet}
               onClick={() => toggleSheet(sheet)}
-              onMouseEnter={(e) => {
-                if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-surface)";
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-elevated)";
-              }}
+              aria-pressed={isActive}
               style={{
-                padding: "8px 18px",
-                borderRadius: 999,
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "7px 8px 7px 14px",
+                borderRadius: 10,
                 border: `1px solid ${isActive ? "var(--accent-teal)" : "var(--border)"}`,
-                background: isActive ? "rgba(6,170,144,0.18)" : "var(--bg-elevated)",
-                color: isActive ? "var(--accent-teal)" : "var(--text-primary)",
-                fontSize: 13,
-                fontWeight: isActive ? 700 : 600,
-                letterSpacing: "0.01em",
-                cursor: "pointer",
-                transition: "background 0.15s, color 0.15s, border-color 0.15s",
+                background: isActive ? "rgba(6,170,144,0.2)" : "rgba(255,255,255,0.035)",
+                color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                fontSize: 13.5,
+                fontWeight: 500,
               }}
             >
               {sheet}
+              <span className="mono" style={{ minWidth: 22, padding: "1px 6px", borderRadius: 6, fontSize: 11.5, textAlign: "center", background: isActive ? "rgba(6,170,144,0.35)" : "rgba(255,255,255,0.07)", color: isActive ? "#d8fff6" : "var(--text-muted)" }}>
+                {count}
+              </span>
             </button>
           );
         })}
         {activeSheets.size > 0 && (
           <button
             onClick={() => setActiveSheets(new Set())}
-            style={{
-              padding: "8px 18px", borderRadius: 999,
-              border: "1px dashed var(--border)", background: "transparent",
-              color: "var(--text-muted)", fontSize: 13, fontWeight: 500, cursor: "pointer",
-            }}
+            style={{ padding: "7px 12px", borderRadius: 10, border: "none", background: "transparent", color: "var(--text-muted)", fontSize: 13.5, textDecoration: "underline", textUnderlineOffset: 3 }}
           >
             Clear filters
           </button>
@@ -820,39 +802,64 @@ export default function ProductsPage() {
 
       {/* Error */}
       {error && (
-        <div style={{ background: "rgba(232,64,64,0.1)", border: "1px solid rgba(232,64,64,0.3)", borderRadius: 8, padding: 16, color: "var(--accent-red)", marginBottom: 24 }}>
-          Error: {error}
-        </div>
-      )}
+        <div role="alert" style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "14px 16px", color: "#FF9C9C", marginBottom: 24, fontSize: 14 }}>
+            <Icon name="alert-circle" size={18} style={{ marginTop: 1 }} />
+            <span>Couldn&apos;t load products. {error}</span>
+          </div>
+        )}
 
       {/* Loading skeleton */}
       {loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
           {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, height: 140 }}>
-              <div style={{ background: "var(--bg-elevated)", borderRadius: 6, height: 16, width: "70%", marginBottom: 12, animation: "pulse 1.5s infinite" }} />
-              <div style={{ background: "var(--bg-elevated)", borderRadius: 6, height: 12, width: "50%", marginBottom: 8 }} />
-              <div style={{ background: "var(--bg-elevated)", borderRadius: 6, height: 12, width: "40%" }} />
+            <div key={i} className="surface" style={{ padding: 18, minHeight: 168, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="skeleton" style={{ borderRadius: 6, height: 11, width: "34%" }} />
+              <div className="skeleton" style={{ borderRadius: 6, height: 20, width: "78%" }} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <div className="skeleton" style={{ borderRadius: 6, height: 22, width: 84 }} />
+                <div className="skeleton" style={{ borderRadius: 6, height: 22, width: 64 }} />
+              </div>
             </div>
           ))}
         </div>
       )}
 
       {/* Grid */}
-      {!loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))", gap: 12 }}>
-          {filtered.map((product) => (
+      {!loading && filtered.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
+          {filtered.map((product, i) => (
             <ProductCard
               key={product.id}
               product={product}
+              index={i}
               onClick={() => setSelectedProduct(product)}
               onStatusChange={handleStatusChange}
             />
           ))}
-          {filtered.length === 0 && (
-            <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 24, color: "var(--text-muted)", fontSize: 13 }}>
-              No products found.
-            </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && filtered.length === 0 && (
+        <div className="surface" style={{ padding: "48px 24px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(6,170,144,0.12)", color: "var(--accent-teal-bright)" }}>
+            <Icon name="search" size={22} />
+          </div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600 }}>
+            {products.length === 0 ? "No products yet" : "Nothing matches that"}
+          </div>
+          <div style={{ color: "var(--text-muted)", fontSize: 14, maxWidth: 360 }}>
+            {products.length === 0
+              ? "Add your first product to start building the library."
+              : "Try a different search term, or clear the category filters."}
+          </div>
+          {products.length > 0 && (search || activeSheets.size > 0) && (
+            <button
+              onClick={() => { setSearch(""); setActiveSheets(new Set()); }}
+              style={{ marginTop: 6, padding: "9px 16px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-primary)", fontSize: 14, fontWeight: 500 }}
+            >
+              Reset search and filters
+            </button>
           )}
         </div>
       )}
