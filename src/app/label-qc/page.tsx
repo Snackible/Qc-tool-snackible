@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Product } from "../../lib/types";
 import { extractPdfText } from "../../lib/labelAudit/extract";
-import { fileToJpegs } from "../../lib/labelAudit/toImages";
+import { fileToJpegs, openRenderer } from "../../lib/labelAudit/toImages";
+import { ocrCanvases } from "../../lib/labelAudit/ocr";
 import { describeNutrition } from "../../lib/labelAudit/nutrients";
 import { PackOption, buildReference, buildVocabulary, packOptionsFor } from "../../lib/labelAudit/reference";
 import { labelHasText, runRulesAudit } from "../../lib/labelAudit/rules";
@@ -20,9 +21,11 @@ const STATUS_STYLE: Record<CheckStatus, { color: string; bg: string; label: stri
   skip: { color: "var(--text-secondary)", bg: "rgba(155,191,190,0.12)", label: "Not checked", icon: "minus-circle" },
 };
 
+const OCR_SIDE = 2400;
+
 type ExtractState =
   | { state: "idle" }
-  | { state: "reading" }
+  | { state: "reading"; detail: string }
   | { state: "ready"; label: ExtractedLabel }
   | { state: "no-text" }
   | { state: "error"; message: string };
@@ -138,15 +141,31 @@ export default function LabelQCPage() {
     setShowPreview(false);
     clearReport();
     const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
-    if (!isPdf) {
-      setExtract({ state: "no-text" });
-      return;
-    }
-    setExtract({ state: "reading" });
     try {
-      const label = await extractPdfText(f);
+      if (isPdf) {
+        setExtract({ state: "reading", detail: "Reading the label text…" });
+        const pdfLabel = await extractPdfText(f);
+        if (id !== extractRun.current) return;
+        if (labelHasText(pdfLabel)) {
+          setExtract({ state: "ready", label: pdfLabel });
+          return;
+        }
+      }
+      // no text layer (a photo, or a PDF with outlined text): read the pixels with OCR
+      setExtract({ state: "reading", detail: "Starting OCR…" });
+      const renderer = await openRenderer(f);
+      let canvases: HTMLCanvasElement[];
+      try {
+        canvases = await renderer.render(OCR_SIDE, { upscale: true });
+      } finally {
+        await renderer.close();
+      }
+      const ocrLabel = await ocrCanvases(canvases, (p) => {
+        if (id !== extractRun.current) return;
+        setExtract({ state: "reading", detail: `${p.stage === "loading" ? "Loading the OCR engine" : "Reading text from the image"}… ${Math.round(p.pct)}%` });
+      });
       if (id !== extractRun.current) return;
-      setExtract(labelHasText(label) ? { state: "ready", label } : { state: "no-text" });
+      setExtract(labelHasText(ocrLabel) ? { state: "ready", label: ocrLabel } : { state: "no-text" });
     } catch (e) {
       if (id !== extractRun.current) return;
       setExtract({ state: "error", message: e instanceof Error ? e.message : String(e) });
@@ -350,7 +369,7 @@ export default function LabelQCPage() {
               <Icon name="upload" size={22} />
             </div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>Click or drop the label here</div>
-            <div style={{ color: "var(--text-muted)", fontSize: 13 }}>PDF or image. PDFs with selectable text are checked without AI.</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 13 }}>PDF or image. Text is read automatically (with OCR for images), so the SOP audit runs without AI.</div>
           </div>
         ) : (
           <div>
@@ -369,10 +388,12 @@ export default function LabelQCPage() {
               {extract.state === "reading" && <span className="spin" style={{ width: 14, height: 14, marginTop: 2, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)", flexShrink: 0 }} />}
               {extract.state === "ready" && <Icon name="check-circle" size={16} style={{ marginTop: 1 }} />}
               <span>
-                {extract.state === "reading" && "Reading the label text…"}
-                {extract.state === "ready" && `Text found in the PDF (${extract.label.charCount.toLocaleString()} characters). The SOP audit can run without AI.`}
-                {extract.state === "no-text" && "No selectable text in this file (an image, or a PDF with outlined text). Use AI review."}
-                {extract.state === "error" && `Couldn't read the PDF text: ${extract.message}. Try AI review.`}
+                {extract.state === "reading" && extract.detail}
+                {extract.state === "ready" && (extract.label.source === "ocr"
+                  ? `Read ${extract.label.charCount.toLocaleString()} characters with OCR. It can misread small or tilted text, so spelling findings are marked Review.`
+                  : `Text found in the PDF (${extract.label.charCount.toLocaleString()} characters). The SOP audit can run without AI.`)}
+                {extract.state === "no-text" && "Couldn't read any text from this file, even with OCR. Use AI review."}
+                {extract.state === "error" && `Couldn't read the label text: ${extract.message}. Try AI review.`}
               </span>
             </div>
             {showPreview && (
@@ -430,7 +451,7 @@ export default function LabelQCPage() {
         </button>
       </div>
       {extract.state === "no-text" && selected && (
-        <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The SOP audit needs a PDF with selectable text. For this file, use AI review.</div>
+        <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The SOP audit couldn't get readable text from this file. Use AI review instead.</div>
       )}
       {runError && (
         <div role="alert" style={{ marginTop: 14, display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "var(--red-text)", fontSize: 14 }}>

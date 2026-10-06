@@ -22,7 +22,7 @@ export function itemsFromTextContent(rawItems: unknown[], page: number): LabelIt
 }
 
 export function summarize(items: LabelItem[], pageCount: number): ExtractedLabel {
-  return { items, pageCount, charCount: items.reduce((n, i) => n + i.s.trim().length, 0) };
+  return { items, pageCount, charCount: items.reduce((n, i) => n + i.s.trim().length, 0), source: "pdf" };
 }
 
 export async function loadPdfjs() {

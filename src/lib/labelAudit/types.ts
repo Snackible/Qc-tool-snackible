@@ -30,7 +30,13 @@ export type LabelItem = {
   rotated: boolean;
 };
 
-export type ExtractedLabel = { items: LabelItem[]; pageCount: number; charCount: number };
+export type ExtractedLabel = {
+  items: LabelItem[];
+  pageCount: number;
+  charCount: number;
+  /** where the text came from: the PDF's own text layer, or OCR of the rendered image */
+  source: "pdf" | "ocr";
+};
 
 export const STEP_NAMES: Record<number, string> = {
   2: "Product Name",

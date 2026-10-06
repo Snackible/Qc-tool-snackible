@@ -8,9 +8,9 @@ import { NutritionBlock } from "../types";
 import { NUTRIENTS, UNIT_WORDS } from "./nutrients";
 import { AuditReference } from "./reference";
 import { Row, buildRows, buildViews, editDistance, joinItems, normalize, rowText, viewsContain, words } from "./textUtils";
-import { AuditCheck, AuditReport, AuditStep, CheckStatus, ExtractedLabel, STEP_NAMES, combineStatus } from "./types";
+import { AuditCheck, AuditReport, AuditStep, CheckStatus, ExtractedLabel, LabelItem, STEP_NAMES, combineStatus } from "./types";
 
-type Ctx = { rows: Row[]; flat: string; views: string[] };
+type Ctx = { rows: Row[]; flat: string; views: string[]; ocr: boolean };
 
 const MIN_TEXT_CHARS = 40;
 
@@ -207,12 +207,20 @@ function findHeading(rows: Row[], re: RegExp): { row: number; item: number } | n
 }
 
 /** Collects the paragraph that starts at a heading: following rows aligned to the heading's left edge. */
-function collectBlock(rows: Row[], at: { row: number; item: number }, maxRows = 30): string {
+function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap = 20, xMax = Infinity, maxRows = 30): string {
   const row0 = rows[at.row];
   const head = row0.items[at.item];
   const x0 = head.x;
   const lead = head.s.includes(":") ? head.s.slice(head.s.indexOf(":") + 1).trim() : "";
-  const sameRow = joinItems(row0.items.slice(at.item + 1).filter((i) => i.x >= x0));
+  // text right after the heading on the same line, up to the first big gap (a gap means another column starts)
+  const sameRowItems: LabelItem[] = [];
+  let edge = head.x + head.w;
+  for (const it of row0.items.slice(at.item + 1)) {
+    if (it.x < x0 || it.x >= xMax || it.x - edge > columnGap) break;
+    sameRowItems.push(it);
+    edge = it.x + it.w;
+  }
+  const sameRow = joinItems(sameRowItems);
   const parts = [lead, sameRow].filter(Boolean);
   const maxGap = Math.max(head.h, 4) * 2.4;
   let prevY = row0.y;
@@ -221,13 +229,13 @@ function collectBlock(rows: Row[], at: { row: number; item: number }, maxRows = 
   for (let r = at.row + 1, used = 1; r < rows.length && used < maxRows; r++, used++) {
     const row = rows[r];
     if (row.page !== row0.page || prevY - row.y > maxGap) break;
-    const cand = row.items.filter((i) => i.x >= x0 - 3);
+    const cand = row.items.filter((i) => i.x >= x0 - 3 && i.x < xMax);
     if (!cand.length) continue; // this line only has text from another panel; the gap check ends the paragraph
-    if (Math.abs(cand[0].x - x0) > 4) break;
+    if (Math.abs(cand[0].x - x0) > 4) continue; // nothing in our column on this line (another column interleaved); the gap check ends the paragraph
     const group = [cand[0]];
     for (let k = 1; k < cand.length; k++) {
       const prev = group[group.length - 1];
-      if (cand[k].x - (prev.x + prev.w) > 20) break;
+      if (cand[k].x - (prev.x + prev.w) > columnGap) break;
       group.push(cand[k]);
     }
     const text = joinItems(group);
@@ -332,6 +340,12 @@ function satisfied(sheetGroup: string, label: Set<string>): boolean {
   return false;
 }
 
+/** Right edge for a text block at x0: the start of a nutrition table's label column further right on the label, if there is one. */
+function blockLimit(ctx: Ctx, x0: number): number {
+  const right = parseNutritionRows(ctx).labelXs.filter((x) => x > x0 + 30);
+  return right.length ? Math.min(...right) - 2 : Infinity;
+}
+
 function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const checks: AuditCheck[] = [];
   const head = findHeading(ctx.rows, /^ingredients?\b/);
@@ -339,7 +353,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   if (!head) {
     checks.push({ label: "Ingredients list", status: "warn", found: "No 'Ingredients' heading found in the label text" });
   } else {
-    const text = collectBlock(ctx.rows, head);
+    const text = collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x));
     const { list, statement } = splitList(text);
     const segments = segmentsOf(list);
     const sheet = splitList(ref.ingredients.replace(/\s+/g, " "));
@@ -433,17 +447,19 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     const typos = findTypos(words(text), ref.vocabulary);
     checks.push({
       label: "Ingredient spelling",
-      status: typos.length ? "fail" : "pass",
+      status: typos.length ? (ctx.ocr ? "warn" : "fail") : "pass",
       expected: typos.length ? typos.map((t) => t.suggestion).join(", ") : undefined,
       found: typos.length ? typos.map((t) => t.word).join(", ") : undefined,
-      note: typos.length ? "These words are not in the sheet's vocabulary but are one or two letters away from a word that is." : undefined,
+      note: typos.length
+        ? "These words are not in the sheet's vocabulary but are one or two letters away from a word that is." + (ctx.ocr ? " The text was read by OCR, so this may be a misread: check the label." : "")
+        : undefined,
     });
   }
 
   // allergen declaration
   const sheetGroups = allergenGroups(ref.allergens);
   const aHead = findHeading(ctx.rows, /^allergen/);
-  const aText = aHead ? collectBlock(ctx.rows, aHead) : "";
+  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x)) : "";
   if (sheetGroups.size === 0) {
     checks.push({ label: "Allergen declaration", status: "skip", note: "The sheet lists no allergens." });
   } else if (!aText) {
@@ -473,6 +489,14 @@ function calcStatus(master: number, found: number, floor: number): CheckStatus {
   return "pass";
 }
 
+/** Tesseract slips in nutrition tables: "10:2" for 10.2, "Og"/"Omg" for 0g/0mg, and a unit "g" read as a trailing 9 ("6g" -> "69"). */
+function ocrFix(token: string): string {
+  return token.replace(/^(\d+):(\d+)/, "$1.$2").replace(/^[Oo](m?g)?$/, "0$1");
+}
+function ocrAlternatives(token: string): string[] {
+  return /^\d+(\.\d+)?9$/.test(token) ? [token.slice(0, -1)] : [];
+}
+
 function parseCell(token: string): number | null | undefined {
   const t = token.trim();
   if (/^[-–—]$/.test(t)) return null;
@@ -486,12 +510,15 @@ type LabelNutrient = { values: (number | null)[]; rowLabel: string };
 function parseNutritionRows(ctx: Ctx) {
   const found = new Map<string, LabelNutrient>();
   const typos: { found: string; expected: string }[] = [];
+  const labelXs: number[] = [];
+  const cell = (tok: string) => parseCell(ctx.ocr ? ocrFix(tok) : tok);
+  const labelGap = ctx.ocr ? 4.5 : 30; // OCR packs a text column and a table closer together than a PDF does
   for (const row of ctx.rows) {
-    const firstNum = row.items.findIndex((it) => it.s.split(/\s+/).every((tok) => parseCell(tok) !== undefined));
-    if (firstNum <= 0) continue;
-    // the label is the run of items just left of the first number; text from a neighbouring panel on the same line is far away
+    for (let firstNum = 1; firstNum < row.items.length; firstNum++) {
+    if (!row.items[firstNum].s.split(/\s+/).every((tok) => cell(tok) !== undefined)) continue;
+    // the label is the run of items just left of this number; text from a neighbouring panel on the same line is further away
     let labelStart = firstNum - 1;
-    while (labelStart > 0 && row.items[labelStart].x - (row.items[labelStart - 1].x + row.items[labelStart - 1].w) <= 30) labelStart--;
+    while (labelStart > 0 && row.items[labelStart].x - (row.items[labelStart - 1].x + row.items[labelStart - 1].w) <= labelGap) labelStart--;
     const rowLabel = joinItems(row.items.slice(labelStart, firstNum));
     const labelNorm = words(rowLabel).filter((w) => !UNIT_WORDS.has(w)).join(" ");
     if (!labelNorm) continue;
@@ -510,14 +537,23 @@ function parseNutritionRows(ctx: Ctx) {
     const values: (number | null)[] = [];
     for (const it of row.items.slice(firstNum)) {
       for (const tok of it.s.split(/\s+/)) {
-        const v = parseCell(tok);
+        const v = cell(tok);
         if (v !== undefined) values.push(v);
+        if (ctx.ocr) {
+          for (const alt of ocrAlternatives(ocrFix(tok))) {
+            const a = parseCell(alt);
+            if (typeof a === "number") values.push(a);
+          }
+        }
       }
     }
     const prev = found.get(nutrient.key as string);
     found.set(nutrient.key as string, { values: prev ? [...prev.values, ...values] : values, rowLabel });
+    labelXs.push(row.items[labelStart].x);
+    break; // this line's nutrient is recorded
+    }
   }
-  return { found, typos };
+  return { found, typos, labelXs };
 }
 
 function checkNutrition(ctx: Ctx, ref: AuditReference, notes: string[]): AuditCheck[] {
@@ -590,7 +626,8 @@ function checkNutrition(ctx: Ctx, ref: AuditReference, notes: string[]): AuditCh
   }
   checks.push({
     label: "Nutrient names spelled correctly",
-    status: typos.length ? "fail" : "pass",
+    status: typos.length ? (ctx.ocr ? "warn" : "fail") : "pass",
+    note: typos.length && ctx.ocr ? "The text was read by OCR, so this may be a misread: check the label." : undefined,
     expected: typos.length ? typos.map((t) => t.expected).join(", ") : undefined,
     found: typos.length ? typos.map((t) => t.found).join(", ") : undefined,
   });
@@ -762,9 +799,14 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 export function runRulesAudit(label: ExtractedLabel, ref: AuditReference): AuditReport {
-  const rows = buildRows(label.items);
-  const ctx: Ctx = { rows, flat: rows.map(rowText).join(" "), views: buildViews(label.items, rows) };
-  const notes: string[] = ["Checked by the rules engine on the PDF's text layer (no AI). Anything it couldn't locate is marked Not checked rather than guessed."];
+  const rows = buildRows(label.items, label.source === "ocr" ? 4 : 2.5);
+  const ocr = label.source === "ocr";
+  const ctx: Ctx = { rows, flat: rows.map(rowText).join(" "), views: buildViews(label.items, rows), ocr };
+  const notes: string[] = [
+    ocr
+      ? "Checked by the rules engine on text read from the image by OCR (no AI). OCR can misread small, tilted or low-contrast text, so confirm any surprising result on the label itself. Anything it couldn't locate is marked Not checked rather than guessed."
+      : "Checked by the rules engine on the PDF's text layer (no AI). Anything it couldn't locate is marked Not checked rather than guessed.",
+  ];
 
   const steps: AuditStep[] = [
     { step: 2, name: STEP_NAMES[2], checks: checkName(ctx, ref) },
@@ -777,6 +819,11 @@ export function runRulesAudit(label: ExtractedLabel, ref: AuditReference): Audit
     { step: 9, name: STEP_NAMES[9], checks: checkMrp(ctx, ref) },
     { step: 10, name: STEP_NAMES[10], checks: checkAddresses(ctx, ref) },
   ];
+
+  if (ocr) {
+    for (const step of steps) for (const c of step.checks) if (c.status === "fail") c.status = "warn";
+    notes.push("Because the text came from OCR, mismatches are marked Review rather than Fail.");
+  }
 
   return {
     product: ref.productName,

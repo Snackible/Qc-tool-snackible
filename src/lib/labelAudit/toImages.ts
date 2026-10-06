@@ -24,55 +24,67 @@ function whiteCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: Ca
   return { canvas, ctx };
 }
 
-/**
- * Turns an uploaded label (image or PDF) into JPEGs small enough to send to the server: a request body
- * over ~4.5 MB is rejected by Vercel, and print-ready label PDFs are often tens of MB.
- */
-export async function fileToJpegs(file: File, maxTotalBytes = 3_900_000): Promise<Blob[]> {
-  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+export type PageRenderer = {
+  /** Renders each page (or the image) with its longest side at `side` px. Images are only enlarged when `upscale` is set. */
+  render: (side: number, opts?: { upscale?: boolean }) => Promise<HTMLCanvasElement[]>;
+  close: () => Promise<void>;
+};
 
-  let render: (side: number) => Promise<HTMLCanvasElement[]>;
-  let cleanup = async () => {};
+/** Opens an image or PDF so its pages can be drawn to canvases at any size. */
+export async function openRenderer(file: File, maxPages = MAX_PDF_PAGES): Promise<PageRenderer> {
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
 
   if (isPdf) {
     const pdfjs = await loadPdfjs();
     const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
     const doc = await task.promise;
-    cleanup = async () => {
-      await task.destroy();
-    };
-    render = async (side) => {
-      const canvases: HTMLCanvasElement[] = [];
-      for (let p = 1; p <= Math.min(doc.numPages, MAX_PDF_PAGES); p++) {
-        const page = await doc.getPage(p);
-        const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: side / Math.max(base.width, base.height) });
-        const { canvas, ctx } = whiteCanvas(viewport.width, viewport.height);
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-        canvases.push(canvas);
-      }
-      return canvases;
-    };
-  } else {
-    const bitmap = await createImageBitmap(file);
-    cleanup = async () => bitmap.close();
-    render = async (side) => {
-      const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
-      const { canvas, ctx } = whiteCanvas(bitmap.width * scale, bitmap.height * scale);
-      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      return [canvas];
+    return {
+      render: async (side) => {
+        const canvases: HTMLCanvasElement[] = [];
+        for (let p = 1; p <= Math.min(doc.numPages, maxPages); p++) {
+          const page = await doc.getPage(p);
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: side / Math.max(base.width, base.height) });
+          const { canvas, ctx } = whiteCanvas(viewport.width, viewport.height);
+          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+          canvases.push(canvas);
+        }
+        return canvases;
+      },
+      close: async () => {
+        await task.destroy();
+      },
     };
   }
 
+  const bitmap = await createImageBitmap(file);
+  return {
+    render: async (side, opts) => {
+      const fit = side / Math.max(bitmap.width, bitmap.height);
+      const scale = opts?.upscale ? fit : Math.min(1, fit);
+      const { canvas, ctx } = whiteCanvas(bitmap.width * scale, bitmap.height * scale);
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return [canvas];
+    },
+    close: async () => bitmap.close(),
+  };
+}
+
+/**
+ * Turns an uploaded label (image or PDF) into JPEGs small enough to send to the server: a request body
+ * over ~4.5 MB is rejected by Vercel, and print-ready label PDFs are often tens of MB.
+ */
+export async function fileToJpegs(file: File, maxTotalBytes = 3_900_000): Promise<Blob[]> {
+  const renderer = await openRenderer(file);
   try {
-    let blobs: Blob[] = [];
     for (const { side, quality } of ATTEMPTS) {
-      const canvases = await render(side);
-      blobs = await Promise.all(canvases.map((c) => canvasToJpeg(c, quality)));
+      const canvases = await renderer.render(side);
+      const blobs = await Promise.all(canvases.map((c) => canvasToJpeg(c, quality)));
       if (blobs.reduce((n, b) => n + b.size, 0) <= maxTotalBytes) return blobs;
     }
     throw new Error("The label is too large to send even after shrinking it. Upload a smaller export.");
   } finally {
-    await cleanup();
+    await renderer.close();
   }
 }
