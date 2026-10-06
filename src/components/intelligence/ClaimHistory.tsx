@@ -31,7 +31,7 @@ export default function ClaimHistory({ history, onSelect, onClear }: Props) {
         </div>
         <button
           onClick={onClear}
-          className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[#FF9C9C] transition-colors"
+          className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--red-text)] transition-colors"
         >
           <Trash2 className="w-3 h-3" />
           Clear
@@ -42,7 +42,7 @@ export default function ClaimHistory({ history, onSelect, onClear }: Props) {
           <button
             key={i}
             onClick={() => onSelect(item)}
-            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[rgba(255,255,255,0.04)] transition-colors text-left group"
+            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-[var(--tint-1)] transition-colors text-left group"
           >
             <div className="w-8 h-8 rounded-lg bg-[rgba(6,170,144,0.14)] flex items-center justify-center flex-shrink-0">
               <span className="text-xs font-bold text-[var(--accent-teal-bright)]">{item.competitors.length}</span>

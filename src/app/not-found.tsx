@@ -9,7 +9,7 @@ export default function NotFound() {
       <p className="page-sub">The link may be out of date, or the page was moved. Head back to the product library to keep working.</p>
       <Link
         href="/products"
-        style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 6, padding: "11px 18px", borderRadius: 10, background: "var(--accent-teal)", color: "#003433", fontWeight: 700, fontSize: 14, textDecoration: "none" }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 6, padding: "11px 18px", borderRadius: 10, background: "var(--accent-teal)", color: "var(--on-accent)", fontWeight: 700, fontSize: 14, textDecoration: "none" }}
       >
         Product library <Icon name="arrow-right" size={16} />
       </Link>

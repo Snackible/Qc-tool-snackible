@@ -14,10 +14,10 @@ import Icon, { IconName } from "../../components/ui/Icon";
 const LabelPreview = dynamic(() => import("./LabelPreview"), { ssr: false });
 
 const STATUS_STYLE: Record<CheckStatus, { color: string; bg: string; label: string; icon: IconName }> = {
-  pass: { color: "#3fd1b8", bg: "rgba(6,170,144,0.16)", label: "Pass", icon: "check-circle" },
-  fail: { color: "#FF8A8A", bg: "rgba(232,64,64,0.16)", label: "Fail", icon: "x-circle" },
-  warn: { color: "#FFD04D", bg: "rgba(255,192,0,0.14)", label: "Review", icon: "alert-circle" },
-  skip: { color: "#A9CBCA", bg: "rgba(155,191,190,0.12)", label: "Not checked", icon: "minus-circle" },
+  pass: { color: "var(--teal-text)", bg: "rgba(6,170,144,0.16)", label: "Pass", icon: "check-circle" },
+  fail: { color: "var(--red-text)", bg: "rgba(232,64,64,0.16)", label: "Fail", icon: "x-circle" },
+  warn: { color: "var(--amber-text)", bg: "rgba(255,192,0,0.14)", label: "Review", icon: "alert-circle" },
+  skip: { color: "var(--text-secondary)", bg: "rgba(155,191,190,0.12)", label: "Not checked", icon: "minus-circle" },
 };
 
 type ExtractState =
@@ -33,7 +33,7 @@ const cardTitle: React.CSSProperties = {
 };
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "11px 13px", borderRadius: 10, border: "1px solid var(--border)",
-  background: "rgba(0, 40, 39, 0.55)", color: "var(--text-primary)", fontSize: 14.5, outline: "none",
+  background: "var(--field-bg)", color: "var(--text-primary)", fontSize: 14.5, outline: "none",
 };
 
 function Badge({ status, small }: { status: CheckStatus; small?: boolean }) {
@@ -247,7 +247,7 @@ export default function LabelQCPage() {
       </p>
 
       {loadError && (
-        <div role="alert" style={{ display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "#FF9C9C", marginBottom: 16, fontSize: 14 }}>
+        <div role="alert" style={{ display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "var(--red-text)", marginBottom: 16, fontSize: 14 }}>
           <Icon name="alert-circle" size={18} style={{ marginTop: 1 }} />
           <span>Couldn&apos;t load products. {loadError}</span>
         </div>
@@ -257,7 +257,7 @@ export default function LabelQCPage() {
       <div className="surface" style={cardStyle}>
         <h2 style={cardTitle}>Product</h2>
         {selected ? (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "rgba(0,40,39,0.55)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "11px 13px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "var(--field-bg)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "11px 13px" }}>
             <span style={{ fontWeight: 600, fontSize: 15 }}>{selected.name}</span>
             <button onClick={clearProduct} aria-label="Clear product" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "var(--text-muted)", fontSize: 13 }}>
               <Icon name="x" size={14} /> Clear
@@ -275,7 +275,7 @@ export default function LabelQCPage() {
               style={inputStyle}
             />
             {showDropdown && search && matches.length > 0 && (
-              <div className="fade-in" style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 6, background: "#00504d", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 18px 40px -14px rgba(0,10,9,0.85)", maxHeight: 260, overflowY: "auto", zIndex: 20, padding: 4 }}>
+              <div className="fade-in" style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 6, background: "var(--menu-bg)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "var(--shadow-menu)", maxHeight: 260, overflowY: "auto", zIndex: 20, padding: 4 }}>
                 {matches.map((p) => (
                   <div
                     key={p.id}
@@ -309,7 +309,7 @@ export default function LabelQCPage() {
                   style={{
                     padding: "8px 14px", borderRadius: 10, fontSize: 14, fontWeight: 500,
                     border: `1px solid ${on ? "var(--accent-teal)" : "var(--border)"}`,
-                    background: on ? "rgba(6,170,144,0.2)" : "rgba(255,255,255,0.035)",
+                    background: on ? "rgba(6,170,144,0.2)" : "var(--tint-1)",
                     color: on ? "var(--text-primary)" : "var(--text-secondary)",
                   }}
                 >
@@ -344,7 +344,7 @@ export default function LabelQCPage() {
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-            style={{ border: "1.5px dashed var(--border-strong)", borderRadius: 12, padding: "32px 16px", textAlign: "center", cursor: "pointer", background: "rgba(0,40,39,0.35)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+            style={{ border: "1.5px dashed var(--border-strong)", borderRadius: 12, padding: "32px 16px", textAlign: "center", cursor: "pointer", background: "var(--panel-sunken)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
           >
             <div style={{ width: 46, height: 46, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(6,170,144,0.14)", color: "var(--accent-teal-bright)" }}>
               <Icon name="upload" size={22} />
@@ -356,7 +356,7 @@ export default function LabelQCPage() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <Icon name={file.type.startsWith("image/") ? "image" : "file"} size={18} style={{ color: "var(--accent-teal-bright)" }} />
-              <span style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-all", flex: 1, minWidth: 0 }}>{file.name}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, overflowWrap: "anywhere", flex: "1 1 170px", minWidth: 0 }}>{file.name}</span>
               <span className="mono" style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{formatSize(file.size)}</span>
               <button onClick={() => setShowPreview((v) => !v)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 13 }}>
                 {showPreview ? "Hide label" : "Show label"}
@@ -366,7 +366,7 @@ export default function LabelQCPage() {
               </button>
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 7, alignItems: "flex-start", fontSize: 13, color: extract.state === "ready" ? "var(--accent-teal-bright)" : "var(--text-muted)" }}>
-              {extract.state === "reading" && <span className="spin" style={{ width: 14, height: 14, marginTop: 2, borderRadius: 999, border: "2px solid rgba(255,255,255,0.18)", borderTopColor: "var(--accent-teal-bright)", flexShrink: 0 }} />}
+              {extract.state === "reading" && <span className="spin" style={{ width: 14, height: 14, marginTop: 2, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)", flexShrink: 0 }} />}
               {extract.state === "ready" && <Icon name="check-circle" size={16} style={{ marginTop: 1 }} />}
               <span>
                 {extract.state === "reading" && "Reading the label text…"}
@@ -414,9 +414,9 @@ export default function LabelQCPage() {
           style={{
             flex: "2 1 220px", padding: "14px 16px", borderRadius: 12, border: "none", fontWeight: 700, fontSize: 15,
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-            background: canRules ? "linear-gradient(180deg, #0cb89c, #06AA90)" : "rgba(255,255,255,0.05)",
-            color: canRules ? "#002d2b" : "var(--text-muted)",
-            boxShadow: canRules ? "0 12px 24px -12px rgba(6,170,144,0.85), inset 0 1px 0 rgba(255,255,255,0.25)" : "none",
+            background: canRules ? "var(--btn-primary)" : "var(--tint-2)",
+            color: canRules ? "var(--on-accent)" : "var(--text-muted)",
+            boxShadow: canRules ? "var(--shadow-btn)" : "none",
           }}
         >
           {running === "rules" ? "Auditing…" : (<><Icon name="check-circle" size={18} /> Run SOP audit</>)}
@@ -426,14 +426,14 @@ export default function LabelQCPage() {
           disabled={!canAi}
           style={{ flex: "1 1 170px", padding: "14px 16px", borderRadius: 12, border: "1px solid var(--border-strong)", background: "transparent", color: canAi ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 600, fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
         >
-          {running === "ai" ? (<><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "var(--accent-teal-bright)" }} /> Asking AI, up to a minute</>) : (<><Icon name="sparkle" size={18} /> Run AI review</>)}
+          {running === "ai" ? (<><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)" }} /> Asking AI, up to a minute</>) : (<><Icon name="sparkle" size={18} /> Run AI review</>)}
         </button>
       </div>
       {extract.state === "no-text" && selected && (
         <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The SOP audit needs a PDF with selectable text. For this file, use AI review.</div>
       )}
       {runError && (
-        <div role="alert" style={{ marginTop: 14, display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "#FF9C9C", fontSize: 14 }}>
+        <div role="alert" style={{ marginTop: 14, display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "var(--red-text)", fontSize: 14 }}>
           <Icon name="alert-circle" size={18} style={{ marginTop: 1 }} />
           <span>{runError}</span>
         </div>
@@ -454,7 +454,7 @@ export default function LabelQCPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 16 }}>
             {(["pass", "fail", "warn", "skip"] as CheckStatus[]).map((s) => (
-              <div key={s} style={{ background: "rgba(0,40,39,0.5)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "10px 12px" }}>
+              <div key={s} style={{ background: "var(--panel-sunken)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "10px 12px" }}>
                 <div className="mono" style={{ fontSize: 24, fontWeight: 500, color: STATUS_STYLE[s].color, lineHeight: 1.1 }}>{counts[s]}</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{STATUS_STYLE[s].label}</div>
               </div>
@@ -470,11 +470,11 @@ export default function LabelQCPage() {
               const ss = stepStatus(step);
               const open = !collapsed.has(step.step);
               return (
-                <div key={step.step} style={{ boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 12, marginBottom: 10, overflow: "hidden", background: "rgba(0,40,39,0.3)" }}>
+                <div key={step.step} style={{ boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 12, marginBottom: 10, overflow: "hidden", background: "var(--panel-sunken)" }}>
                   <button
                     onClick={() => toggleStep(step.step)}
                     aria-expanded={open}
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "rgba(255,255,255,0.03)", border: "none", color: "inherit", textAlign: "left" }}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "var(--tint-1)", border: "none", color: "inherit", textAlign: "left" }}
                   >
                     <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 44 }}>Step {step.step}</span>
                     <span style={{ fontSize: 14.5, fontWeight: 600, flex: 1 }}>{step.name}</span>
@@ -488,7 +488,7 @@ export default function LabelQCPage() {
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontSize: 14, fontWeight: 500 }}>
                             {c.sop_rule && (
-                              <span style={{ fontSize: 11, fontWeight: 600, background: "rgba(183,200,21,0.14)", color: "#D2E04A", padding: "1px 6px", borderRadius: 5, marginRight: 7, verticalAlign: "middle" }}>SOP</span>
+                              <span style={{ fontSize: 11, fontWeight: 600, background: "rgba(183,200,21,0.14)", color: "var(--lime-text)", padding: "1px 6px", borderRadius: 5, marginRight: 7, verticalAlign: "middle" }}>SOP</span>
                             )}
                             {c.label}
                           </div>
@@ -501,7 +501,7 @@ export default function LabelQCPage() {
                           {c.found && (
                             <div style={{ fontSize: 13, marginTop: 2, wordBreak: "break-word" }}>
                               <span style={{ color: "var(--text-muted)" }}>On label </span>
-                              <span style={{ color: c.status === "fail" ? "#FF8A8A" : c.status === "pass" ? "var(--accent-teal-bright)" : "var(--text-secondary)" }}>{c.found}</span>
+                              <span style={{ color: c.status === "fail" ? "var(--red-text)" : c.status === "pass" ? "var(--accent-teal-bright)" : "var(--text-secondary)" }}>{c.found}</span>
                             </div>
                           )}
                           {c.note && <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{c.note}</div>}

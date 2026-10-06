@@ -6,10 +6,10 @@ import Icon from "../ui/Icon";
 
 // tinted versions of the brand palette (teal / lime / amber / red)
 const STATUS_OPTIONS: { value: ProductStatus; label: string; dot: string; bg: string; text: string; ring: string }[] = [
-  { value: "not_launched",       label: "Not launched",         dot: "#E84040", bg: "rgba(232,64,64,0.14)",  text: "#FF9C9C", ring: "rgba(232,64,64,0.38)" },
-  { value: "under_review",       label: "Under review",         dot: "#FFC000", bg: "rgba(255,192,0,0.13)",  text: "#FFD54D", ring: "rgba(255,192,0,0.36)" },
-  { value: "needs_verification", label: "Needs verification",   dot: "#B7C815", bg: "rgba(183,200,21,0.13)", text: "#D2E04A", ring: "rgba(183,200,21,0.36)" },
-  { value: "launched",           label: "Launched",             dot: "#06AA90", bg: "rgba(6,170,144,0.18)",  text: "#5FE0C8", ring: "rgba(6,170,144,0.45)" },
+  { value: "not_launched",       label: "Not launched",         dot: "#E84040", bg: "rgba(232,64,64,0.14)",  text: "var(--red-text)", ring: "rgba(232,64,64,0.38)" },
+  { value: "under_review",       label: "Under review",         dot: "#FFC000", bg: "rgba(255,192,0,0.13)",  text: "var(--amber-text)", ring: "rgba(255,192,0,0.36)" },
+  { value: "needs_verification", label: "Needs verification",   dot: "#B7C815", bg: "rgba(183,200,21,0.13)", text: "var(--lime-text)", ring: "rgba(183,200,21,0.36)" },
+  { value: "launched",           label: "Launched",             dot: "#06AA90", bg: "rgba(6,170,144,0.18)",  text: "var(--teal-text)", ring: "rgba(6,170,144,0.45)" },
 ];
 
 interface StatusDropdownProps {
@@ -58,7 +58,7 @@ export default function StatusDropdown({ value, onChange }: StatusDropdownProps)
         }}
       >
         {STATUS_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value} style={{ background: "#004845", color: "#F0FAF9" }}>
+          <option key={opt.value} value={opt.value} style={{ background: "var(--menu-bg)", color: "var(--text-primary)" }}>
             {opt.label}
           </option>
         ))}

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Icon, { IconName } from "./ui/Icon";
 import BrandMark from "./ui/BrandMark";
+import ThemeSwitch from "./ui/ThemeSwitch";
 
 const NAV_ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: "/products", label: "Product Library", icon: "box" },
@@ -64,7 +65,10 @@ export default function NavSidebar() {
       <aside className="sidebar">
         <Brand />
         <NavLinks />
-        <div className="nav-foot">v1.0 &middot; Internal use only</div>
+        <div className="nav-foot">
+          <ThemeSwitch />
+          <span>v1.0 &middot; Internal use only</span>
+        </div>
       </aside>
 
       {/* mobile: top bar + slide-in drawer (hidden on desktop by CSS) */}
@@ -86,7 +90,10 @@ export default function NavSidebar() {
           </button>
         </div>
         <NavLinks />
-        <div className="nav-foot">v1.0 &middot; Internal use only</div>
+        <div className="nav-foot">
+          <ThemeSwitch />
+          <span>v1.0 &middot; Internal use only</span>
+        </div>
       </aside>
     </>
   );

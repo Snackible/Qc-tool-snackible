@@ -106,12 +106,12 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           placeholder='e.g. "protein chips", "millet snacks", "baked namkeen"'
-          className="flex-1 min-w-[220px] px-4 py-2.5 text-sm border border-[var(--border)] bg-[rgba(0,40,39,0.55)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] focus:border-[var(--accent-teal)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+          className="flex-1 min-w-[220px] px-4 py-2.5 text-sm border border-[var(--border)] bg-[var(--field-bg)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] focus:border-[var(--accent-teal)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
         />
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="px-3 py-2.5 text-sm border border-[var(--border)] bg-[rgba(0,40,39,0.55)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] text-[var(--text-primary)] bg-[rgba(0,40,39,0.55)]"
+          className="px-3 py-2.5 text-sm border border-[var(--border)] bg-[var(--field-bg)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] text-[var(--text-primary)] bg-[var(--field-bg)]"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -120,7 +120,7 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
         <select
           value={region}
           onChange={(e) => setRegion(e.target.value)}
-          className="px-3 py-2.5 text-sm border border-[var(--border)] bg-[rgba(0,40,39,0.55)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] text-[var(--text-primary)] bg-[rgba(0,40,39,0.55)]"
+          className="px-3 py-2.5 text-sm border border-[var(--border)] bg-[var(--field-bg)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[rgba(6,170,144,0.3)] text-[var(--text-primary)] bg-[var(--field-bg)]"
         >
           {REGIONS.map((r) => (
             <option key={r} value={r}>{r}</option>
@@ -129,7 +129,7 @@ export default function MarketSearch({ onResults, isLoading, setLoading }: Props
         <button
           type="submit"
           disabled={!keyword.trim() || isLoading}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent-teal)] text-[#002d2b] text-sm font-semibold rounded-xl hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent-teal)] text-[var(--on-accent)] text-sm font-semibold rounded-xl hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
         >
           {isLoading ? (
             <>

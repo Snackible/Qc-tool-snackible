@@ -61,7 +61,7 @@ function Chip({ label }: { label: string }) {
 
 function SheetBadge({ sheet }: { sheet: string }) {
   return (
-    <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: "var(--text-secondary)" }}>
+    <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "var(--tint-2)", color: "var(--text-secondary)" }}>
       {sheet}
     </span>
   );
@@ -226,7 +226,7 @@ function NutritionSection({
               <button
                 onClick={save}
                 disabled={saving}
-                style={{ ...btnStyle, background: "var(--accent-teal)", color: "#003433", borderColor: "var(--accent-teal)" }}
+                style={{ ...btnStyle, background: "var(--accent-teal)", color: "var(--on-accent)", borderColor: "var(--accent-teal)" }}
               >
                 {saving ? "Saving…" : "Save"}
               </button>
@@ -284,7 +284,7 @@ function NutritionSection({
             </thead>
             <tbody>
               {NUTRIENT_ROWS.map(({ label, key, unit }, rowIdx) => (
-                <tr key={key} style={{ background: rowIdx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}>
+                <tr key={key} style={{ background: rowIdx % 2 === 0 ? "transparent" : "var(--tint-1)" }}>
                   <td style={{ padding: "7px 10px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>
                     {label}
                   </td>
@@ -433,7 +433,7 @@ function ProductDrawer({
       <div
         className="fade-in"
         onClick={onClose}
-        style={{ position: "fixed", inset: 0, background: "rgba(0,16,15,0.6)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex: 140 }}
+        style={{ position: "fixed", inset: 0, background: "var(--overlay)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex: 140 }}
       />
       {/* Drawer */}
       <aside
@@ -442,9 +442,9 @@ function ProductDrawer({
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0,
           width: "min(100vw, 520px)",
-          background: "linear-gradient(180deg, #004845, #003836)",
+          background: "var(--drawer-bg)",
           borderLeft: "1px solid var(--border-strong)",
-          boxShadow: "-28px 0 60px -24px rgba(0,0,0,0.75)",
+          boxShadow: "var(--shadow-drawer)",
           zIndex: 150, overflowY: "auto", padding: "22px 22px 32px",
           display: "flex", flexDirection: "column", gap: 20,
         }}
@@ -460,7 +460,7 @@ function ProductDrawer({
           <button
             onClick={onClose}
             aria-label="Close"
-            style={{ flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+            style={{ flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "var(--tint-2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
           >
             <Icon name="x" size={18} />
           </button>
@@ -499,7 +499,7 @@ function ProductDrawer({
             background: "rgba(232,64,64,0.09)", borderRadius: 10,
             padding: "12px 14px", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.26)",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#FF9C9C", marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--red-text)", marginBottom: 4 }}>
               <Icon name="alert" size={14} /> Allergens
             </div>
             <div style={{ color: "var(--text-secondary)", fontSize: 13.5 }}>{product.allergens}</div>
@@ -731,8 +731,8 @@ export default function ProductsPage() {
           style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             padding: "11px 18px", borderRadius: 10, border: "none",
-            background: "linear-gradient(180deg, #0cb89c, #06AA90)", color: "#002d2b",
-            boxShadow: "0 10px 22px -10px rgba(6,170,144,0.8), inset 0 1px 0 rgba(255,255,255,0.25)",
+            background: "var(--btn-primary)", color: "var(--on-accent)",
+            boxShadow: "var(--shadow-btn)",
             fontWeight: 700, fontSize: 14, whiteSpace: "nowrap",
           }}
         >
@@ -754,7 +754,7 @@ export default function ProductsPage() {
             padding: "13px 16px 13px 42px",
             borderRadius: 12,
             border: "1px solid var(--border)",
-            background: "rgba(0, 40, 39, 0.55)",
+            background: "var(--field-bg)",
             color: "var(--text-primary)",
             fontSize: 15,
             outline: "none",
@@ -777,14 +777,14 @@ export default function ProductsPage() {
                 padding: "7px 8px 7px 14px",
                 borderRadius: 10,
                 border: `1px solid ${isActive ? "var(--accent-teal)" : "var(--border)"}`,
-                background: isActive ? "rgba(6,170,144,0.2)" : "rgba(255,255,255,0.035)",
+                background: isActive ? "rgba(6,170,144,0.2)" : "var(--tint-1)",
                 color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
                 fontSize: 13.5,
                 fontWeight: 500,
               }}
             >
               {sheet}
-              <span className="mono" style={{ minWidth: 22, padding: "1px 6px", borderRadius: 6, fontSize: 11.5, textAlign: "center", background: isActive ? "rgba(6,170,144,0.35)" : "rgba(255,255,255,0.07)", color: isActive ? "#d8fff6" : "var(--text-muted)" }}>
+              <span className="mono" style={{ minWidth: 22, padding: "1px 6px", borderRadius: 6, fontSize: 11.5, textAlign: "center", background: isActive ? "rgba(6,170,144,0.35)" : "var(--tint-2)", color: isActive ? "var(--teal-text)" : "var(--text-muted)" }}>
                 {count}
               </span>
             </button>
@@ -802,7 +802,7 @@ export default function ProductsPage() {
 
       {/* Error */}
       {error && (
-        <div role="alert" style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "14px 16px", color: "#FF9C9C", marginBottom: 24, fontSize: 14 }}>
+        <div role="alert" style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "14px 16px", color: "var(--red-text)", marginBottom: 24, fontSize: 14 }}>
             <Icon name="alert-circle" size={18} style={{ marginTop: 1 }} />
             <span>Couldn&apos;t load products. {error}</span>
           </div>

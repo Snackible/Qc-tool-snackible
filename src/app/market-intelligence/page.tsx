@@ -49,7 +49,7 @@ export default function MarketIntelligencePage() {
           boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)",
           borderRadius: 12,
           padding: "12px 16px",
-          color: "#FFD04D",
+          color: "var(--amber-text)",
           fontSize: 14,
           marginBottom: 24,
           display: "flex",
@@ -70,7 +70,7 @@ export default function MarketIntelligencePage() {
             role="status"
             style={{ padding: 40, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
           >
-            <span className="spin" style={{ width: 22, height: 22, borderRadius: 999, border: "2.5px solid rgba(255,255,255,0.16)", borderTopColor: "var(--accent-teal-bright)", marginBottom: 6 }} />
+            <span className="spin" style={{ width: 22, height: 22, borderRadius: 999, border: "2.5px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)", marginBottom: 6 }} />
             <div style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600 }}>
               Scanning quick-commerce platforms…
             </div>

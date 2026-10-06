@@ -129,14 +129,14 @@ export default function AddProductModal({
 
   return (
     <>
-      <div className="fade-in" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,16,15,0.6)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex: 160 }} />
+      <div className="fade-in" onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", zIndex: 160 }} />
       <aside
         className="slide-in-right"
         aria-label="Add product"
         style={{
           position: "fixed", top: 0, right: 0, bottom: 0,
-          width: "min(100vw, 560px)", background: "linear-gradient(180deg, #004845, #003836)",
-          borderLeft: "1px solid var(--border-strong)", boxShadow: "-28px 0 60px -24px rgba(0,0,0,0.75)", zIndex: 161,
+          width: "min(100vw, 560px)", background: "var(--drawer-bg)",
+          borderLeft: "1px solid var(--border-strong)", boxShadow: "var(--shadow-drawer)", zIndex: 161,
           overflowY: "auto", padding: "20px 20px 32px",
           display: "flex", flexDirection: "column", gap: 4,
         }}
@@ -146,7 +146,7 @@ export default function AddProductModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            style={{ width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+            style={{ width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 10, background: "var(--tint-2)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
           >
             <Icon name="x" size={18} />
           </button>
@@ -277,7 +277,7 @@ export default function AddProductModal({
           <button
             onClick={submit}
             disabled={saving}
-            style={{ flex: 2, padding: "11px", borderRadius: 8, border: "none", background: "var(--accent-teal)", color: "#003433", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontSize: 13 }}
+            style={{ flex: 2, padding: "11px", borderRadius: 8, border: "none", background: "var(--accent-teal)", color: "var(--on-accent)", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", fontSize: 13 }}
           >
             {saving ? "Saving…" : "Add product"}
           </button>

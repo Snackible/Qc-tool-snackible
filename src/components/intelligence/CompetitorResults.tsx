@@ -8,23 +8,23 @@ import { cn } from "../../lib/utils";
 const PLATFORMS = ["All", "Blinkit", "Zepto", "BigBasket", "SwiggyInstamart", "Amazon"] as const;
 
 const PLATFORM_COLORS: Record<string, string> = {
-  Blinkit: "bg-[rgba(255,192,0,0.12)] text-[#FFD04D] border-[rgba(255,192,0,0.3)]",
-  Zepto: "bg-[rgba(183,200,21,0.12)] text-[#D2E04A] border-[rgba(183,200,21,0.3)]",
-  BigBasket: "bg-[rgba(6,170,144,0.15)] text-[#5FE0C8] border-[rgba(6,170,144,0.35)]",
-  SwiggyInstamart: "bg-[rgba(232,64,64,0.13)] text-[#FF9C9C] border-[rgba(232,64,64,0.32)]",
-  Amazon: "bg-[rgba(169,203,202,0.12)] text-[#A9CBCA] border-[rgba(169,203,202,0.28)]",
+  Blinkit: "bg-[rgba(255,192,0,0.12)] text-[var(--amber-text)] border-[rgba(255,192,0,0.3)]",
+  Zepto: "bg-[rgba(183,200,21,0.12)] text-[var(--lime-text)] border-[rgba(183,200,21,0.3)]",
+  BigBasket: "bg-[rgba(6,170,144,0.15)] text-[var(--teal-text)] border-[rgba(6,170,144,0.35)]",
+  SwiggyInstamart: "bg-[rgba(232,64,64,0.13)] text-[var(--red-text)] border-[rgba(232,64,64,0.32)]",
+  Amazon: "bg-[rgba(169,203,202,0.12)] text-[var(--text-secondary)] border-[rgba(169,203,202,0.28)]",
 };
 
 const SENTIMENT_COLORS: Record<string, string> = {
-  positive: "text-[#5FE0C8] bg-[rgba(6,170,144,0.15)] border-[rgba(6,170,144,0.35)]",
-  negative: "text-[#FF9C9C] bg-[rgba(232,64,64,0.13)] border-[rgba(232,64,64,0.32)]",
-  neutral: "text-[var(--text-muted)] bg-[rgba(255,255,255,0.05)] border-[var(--border)]",
+  positive: "text-[var(--teal-text)] bg-[rgba(6,170,144,0.15)] border-[rgba(6,170,144,0.35)]",
+  negative: "text-[var(--red-text)] bg-[rgba(232,64,64,0.13)] border-[rgba(232,64,64,0.32)]",
+  neutral: "text-[var(--text-muted)] bg-[var(--tint-2)] border-[var(--border)]",
 };
 
 const ALIGNMENT_COLORS: Record<string, string> = {
-  High: "text-[#5FE0C8] bg-[rgba(6,170,144,0.15)] border-[rgba(6,170,144,0.4)]",
-  Medium: "text-[#FFD04D] bg-[rgba(255,192,0,0.12)] border-[rgba(255,192,0,0.38)]",
-  Low: "text-[#FF9C9C] bg-[rgba(232,64,64,0.13)] border-[rgba(232,64,64,0.38)]",
+  High: "text-[var(--teal-text)] bg-[rgba(6,170,144,0.15)] border-[rgba(6,170,144,0.4)]",
+  Medium: "text-[var(--amber-text)] bg-[rgba(255,192,0,0.12)] border-[rgba(255,192,0,0.38)]",
+  Low: "text-[var(--red-text)] bg-[rgba(232,64,64,0.13)] border-[rgba(232,64,64,0.38)]",
 };
 
 function StarRating({ rating }: { rating: number }) {
@@ -37,7 +37,7 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 function SIScorePill({ score }: { score: number }) {
-  const color = score >= 4 ? "text-[#5FE0C8] bg-[rgba(6,170,144,0.15)]" : score >= 3 ? "text-[#FFD04D] bg-[rgba(255,192,0,0.13)]" : "text-[#FF9C9C] bg-[rgba(232,64,64,0.13)]";
+  const color = score >= 4 ? "text-[var(--teal-text)] bg-[rgba(6,170,144,0.15)]" : score >= 3 ? "text-[var(--amber-text)] bg-[rgba(255,192,0,0.13)]" : "text-[var(--red-text)] bg-[rgba(232,64,64,0.13)]";
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold font-mono", color)}>
       SI {score.toFixed(1)}
@@ -115,7 +115,7 @@ function SIAnalysisRow({ item }: { item: SIAnalysisItem }) {
       {item.risk_flags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {item.risk_flags.map((f) => (
-            <span key={f} className="flex items-center gap-1 text-xs px-2 py-0.5 bg-[rgba(255,192,0,0.12)] text-[#FFD04D] rounded-full border border-[rgba(255,192,0,0.3)]">
+            <span key={f} className="flex items-center gap-1 text-xs px-2 py-0.5 bg-[rgba(255,192,0,0.12)] text-[var(--amber-text)] rounded-full border border-[rgba(255,192,0,0.3)]">
               <AlertTriangle className="w-3 h-3" />
               {f}
             </span>
@@ -147,10 +147,10 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
           <span className={cn(
             "text-xs px-3 py-1 rounded-full border font-medium",
             result.dataSource === "scraper"
-              ? "bg-[rgba(6,170,144,0.15)] text-[#5FE0C8] border-[rgba(6,170,144,0.35)]"
+              ? "bg-[rgba(6,170,144,0.15)] text-[var(--teal-text)] border-[rgba(6,170,144,0.35)]"
               : result.dataSource === "apify"
-              ? "bg-[rgba(169,203,202,0.12)] text-[#A9CBCA] border-[rgba(169,203,202,0.28)]"
-              : "bg-[rgba(255,192,0,0.12)] text-[#FFD04D] border-[rgba(255,192,0,0.3)]"
+              ? "bg-[rgba(169,203,202,0.12)] text-[var(--text-secondary)] border-[rgba(169,203,202,0.28)]"
+              : "bg-[rgba(255,192,0,0.12)] text-[var(--amber-text)] border-[rgba(255,192,0,0.3)]"
           )}>
             {result.dataSource === "scraper" && "Live scraped data"}
             {result.dataSource === "apify" && "Apify actor data"}
@@ -193,7 +193,7 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
           </div>
           <div className="flex flex-wrap gap-1.5">
             {market_summary.dominant_claims.map((c) => (
-              <span key={c} className="text-xs px-2.5 py-1 bg-[rgba(255,255,255,0.04)] border border-[var(--border)] text-[var(--text-secondary)] rounded-full">
+              <span key={c} className="text-xs px-2.5 py-1 bg-[var(--tint-1)] border border-[var(--border)] text-[var(--text-secondary)] rounded-full">
                 {c}
               </span>
             ))}
@@ -217,7 +217,7 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
 
       {/* Platform Tabs + Product Grid */}
       <div className="surface overflow-hidden">
-        <div className="flex items-center gap-1 p-2 border-b border-[var(--border)] bg-[rgba(255,255,255,0.04)] overflow-x-auto">
+        <div className="flex items-center gap-1 p-2 border-b border-[var(--border)] bg-[var(--tint-1)] overflow-x-auto">
           {PLATFORMS.map((p) => {
             const count = p === "All" ? result.competitors.length : result.competitors.filter((c) => c.platform === p).length;
             if (count === 0 && p !== "All") return null;
@@ -228,12 +228,12 @@ export default function CompetitorResults({ result }: { result: MarketIntelResul
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap",
                   activeTab === p
-                    ? "bg-[var(--accent-teal)] text-[#002d2b]"
+                    ? "bg-[var(--accent-teal)] text-[var(--on-accent)]"
                     : "text-[var(--text-muted)] hover:bg-[rgba(6,170,144,0.14)] hover:text-[var(--accent-teal-bright)]"
                 )}
               >
                 {p === "SwiggyInstamart" ? "Swiggy" : p}
-                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", activeTab === p ? "bg-[rgba(0,45,43,0.25)]" : "bg-[rgba(255,255,255,0.09)]")}>
+                <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", activeTab === p ? "bg-[rgba(0,45,43,0.25)]" : "bg-[var(--tint-3)]")}>
                   {count}
                 </span>
               </button>

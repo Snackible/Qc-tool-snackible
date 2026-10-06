@@ -143,7 +143,7 @@ export default function LabelPreview({ file, height = 700 }: { file: File; heigh
           <canvas ref={canvasRef} style={{ display: "block", maxWidth: "100%" }} />
         )}
         {isPdf && pdfError && (
-          <div style={{ color: "#E84040", fontSize: 13, padding: 48, textAlign: "center" }}>
+          <div style={{ color: "var(--red-text)", fontSize: 13, padding: 48, textAlign: "center" }}>
             Could not render PDF: {pdfError}
           </div>
         )}

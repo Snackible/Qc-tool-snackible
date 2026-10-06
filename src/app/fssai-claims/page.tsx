@@ -62,12 +62,12 @@ function ocrToN100(ocr: Partial<Record<string, number | null>>, servingG: number
 
 function StatusChip({ status, label }: { status: "pass" | "fail" | "warning" | "neutral" | "factual" | "custom"; label?: string }) {
   const map = {
-    pass:    { bg: "rgba(6,170,144,0.15)",   color: "#06AA90", text: label || "PASS" },
-    fail:    { bg: "rgba(232,64,64,0.15)",   color: "#E84040", text: label || "FAIL" },
-    warning: { bg: "rgba(255,192,0,0.15)",   color: "#FFC000", text: label || "WARNING" },
-    neutral: { bg: "rgba(155,191,190,0.15)", color: "#9BBFBE", text: label || "INFO" },
-    factual: { bg: "rgba(183,200,21,0.15)",  color: "#B7C815", text: label || "FACTUAL" },
-    custom:  { bg: "rgba(255,192,0,0.15)",   color: "#FFC000", text: label || "CUSTOM" },
+    pass:    { bg: "rgba(6,170,144,0.15)",   color: "var(--teal-text)", text: label || "PASS" },
+    fail:    { bg: "rgba(232,64,64,0.15)",   color: "var(--red-text)", text: label || "FAIL" },
+    warning: { bg: "rgba(255,192,0,0.15)",   color: "var(--amber-text)", text: label || "WARNING" },
+    neutral: { bg: "rgba(155,191,190,0.15)", color: "var(--text-secondary)", text: label || "INFO" },
+    factual: { bg: "rgba(183,200,21,0.15)",  color: "var(--lime-text)", text: label || "FACTUAL" },
+    custom:  { bg: "rgba(255,192,0,0.15)",   color: "var(--amber-text)", text: label || "CUSTOM" },
   };
   const s = map[status] || map.neutral;
   return (
@@ -229,10 +229,10 @@ export default function FSSAIClaimsPage() {
           onChange={(e) => { setSearch(e.target.value); setSelected(null); setShowDropdown(true); }}
           onFocus={() => setShowDropdown(true)}
           disabled={loading}
-          style={{ width: "100%", padding: "13px 16px 13px 42px", borderRadius: 12, border: "1px solid var(--border)", background: "rgba(0, 40, 39, 0.55)", color: "var(--text-primary)", fontSize: 15, outline: "none" }}
+          style={{ width: "100%", padding: "13px 16px 13px 42px", borderRadius: 12, border: "1px solid var(--border)", background: "var(--field-bg)", color: "var(--text-primary)", fontSize: 15, outline: "none" }}
         />
         {showDropdown && filtered.length > 0 && (
-          <div className="fade-in" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#00504d", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "0 18px 40px -14px rgba(0,10,9,0.85)", zIndex: 100, maxHeight: 260, overflowY: "auto", marginTop: 6, padding: 4 }}>
+          <div className="fade-in" style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--menu-bg)", border: "1px solid var(--border-strong)", borderRadius: 12, boxShadow: "var(--shadow-menu)", zIndex: 100, maxHeight: 260, overflowY: "auto", marginTop: 6, padding: 4 }}>
             {filtered.map((p) => (
               <div
                 key={p.id}
@@ -261,7 +261,7 @@ export default function FSSAIClaimsPage() {
               style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
                 border: "1.5px dashed var(--border-strong)", borderRadius: 12, cursor: "pointer",
-                background: "rgba(0,40,39,0.35)", color: "var(--text-secondary)", fontSize: 14,
+                background: "var(--panel-sunken)", color: "var(--text-secondary)", fontSize: 14,
               }}
             >
               <Icon name="paperclip" size={18} style={{ color: "var(--accent-teal-bright)" }} />
@@ -273,11 +273,11 @@ export default function FSSAIClaimsPage() {
             <div className="surface" style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", flexWrap: "wrap" }}>
               <Icon name={labelPreview ? "image" : "file"} size={18} style={{ color: "var(--accent-teal-bright)" }} />
               <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: "var(--text-primary)", fontWeight: 500, wordBreak: "break-all" }}>{labelFile.name}</span>
-              {ocrLoading && (<span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, color: "var(--text-muted)" }}><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid rgba(255,255,255,0.18)", borderTopColor: "var(--accent-teal-bright)" }} />Extracting…</span>)}
+              {ocrLoading && (<span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, color: "var(--text-muted)" }}><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)" }} />Extracting…</span>)}
               {!labelOCR && !ocrLoading && (
                 <button
                   onClick={handleExtract}
-                  style={{ padding: "8px 14px", background: "linear-gradient(180deg, #0cb89c, #06AA90)", color: "#002d2b", border: "none", borderRadius: 9, fontWeight: 700, fontSize: 13 }}
+                  style={{ padding: "8px 14px", background: "var(--btn-primary)", color: "var(--on-accent)", border: "none", borderRadius: 9, fontWeight: 700, fontSize: 13 }}
                 >
                   Extract from label
                 </button>
@@ -295,7 +295,7 @@ export default function FSSAIClaimsPage() {
             </div>
           )}
           {ocrError && (
-            <div role="alert" style={{ marginTop: 10, display: "flex", gap: 8, padding: "10px 12px", background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 10, color: "#FF9C9C", fontSize: 13 }}>
+            <div role="alert" style={{ marginTop: 10, display: "flex", gap: 8, padding: "10px 12px", background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 10, color: "var(--red-text)", fontSize: 13 }}>
               <Icon name="alert-circle" size={16} style={{ marginTop: 1 }} />
               <span>Couldn&apos;t read the label. {ocrError}</span>
             </div>
@@ -304,7 +304,7 @@ export default function FSSAIClaimsPage() {
       )}
 
       {selected && !n100 && (
-        <div role="alert" style={{ background: "rgba(255,192,0,0.1)", boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)", borderRadius: 12, padding: 16, color: "#FFD04D", marginBottom: 24, fontSize: 14 }}>
+        <div role="alert" style={{ background: "rgba(255,192,0,0.1)", boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)", borderRadius: 12, padding: 16, color: "var(--amber-text)", marginBottom: 24, fontSize: 14 }}>
           No 100g nutrition block found for this product. Claims cannot be validated without per-100g values.
         </div>
       )}
@@ -341,7 +341,7 @@ export default function FSSAIClaimsPage() {
               borderRadius: 12, padding: "14px 18px", marginBottom: 28,
               background: overallStatus === "NON_COMPLIANT" ? "rgba(232,64,64,0.1)" : overallStatus === "REVIEW_REQUIRED" ? "rgba(255,192,0,0.1)" : "rgba(6,170,144,0.12)",
               boxShadow: `inset 0 0 0 1px ${overallStatus === "NON_COMPLIANT" ? "rgba(232,64,64,0.34)" : overallStatus === "REVIEW_REQUIRED" ? "rgba(255,192,0,0.32)" : "rgba(6,170,144,0.34)"}`,
-              color: overallStatus === "NON_COMPLIANT" ? "#FF9C9C" : overallStatus === "REVIEW_REQUIRED" ? "#FFD04D" : "var(--accent-teal-bright)",
+              color: overallStatus === "NON_COMPLIANT" ? "var(--red-text)" : overallStatus === "REVIEW_REQUIRED" ? "var(--amber-text)" : "var(--accent-teal-bright)",
               fontWeight: 600, fontSize: 15,
             }}>
               <Icon name={overallStatus === "NON_COMPLIANT" ? "x-circle" : overallStatus === "REVIEW_REQUIRED" ? "alert-circle" : "check-circle"} size={20} style={{ marginTop: 1 }} />
@@ -460,7 +460,7 @@ export default function FSSAIClaimsPage() {
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
                     Sodium check
                   </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 12.5, color: "#FFD04D", marginBottom: 12 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 12.5, color: "var(--amber-text)", marginBottom: 12 }}>
                     <Icon name="alert" size={14} style={{ marginTop: 2 }} />
                     <span>Snackible internal standard, not an FSSAI regulation: flag if sodium is above {SODIUM_THRESHOLD}mg/100g</span>
                   </div>
@@ -586,7 +586,7 @@ export default function FSSAIClaimsPage() {
             <div className="surface" style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: 420, borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "rgba(255,255,255,0.04)" }}>
+                <tr style={{ background: "var(--tint-1)" }}>
                   {[`Nutrient`, `Per 100g`, `Per serving (${serving}g)`, `%RDA`].map((h) => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: h === "Nutrient" ? "left" : "right", color: "var(--text-muted)", fontWeight: 600, borderBottom: "1px solid var(--border)", fontSize: 11 }}>
                       {h}
@@ -605,7 +605,7 @@ export default function FSSAIClaimsPage() {
                     <tr
                       key={key}
                       style={{
-                        background: isSodiumHigh ? "rgba(255,192,0,0.06)" : idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
+                        background: isSodiumHigh ? "rgba(255,192,0,0.06)" : idx % 2 === 0 ? "transparent" : "var(--tint-1)",
                         borderBottom: "1px solid var(--border)",
                       }}
                     >
