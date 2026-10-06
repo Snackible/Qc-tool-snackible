@@ -68,6 +68,35 @@ function checkName(ctx: Ctx, ref: AuditReference): AuditCheck[] {
 
 // ── Step 3: USPs ─────────────────────────────────────────────────────────────
 
+/** "No Maida", "Without palm oil", "Zero trans fat", "Preservative free" claim an absence, so they are checked against the sheet. */
+function absenceTarget(claim: string): string | null {
+  const m = claim.trim().match(/^(?:no|without|zero)\s+(.+)$/i) ?? claim.trim().match(/^(.+?)[\s-]free$/i);
+  return m ? normalize(m[1]) : null;
+}
+
+const ABSENCE_ALIASES: Record<string, string[]> = {
+  maida: ["maida", "refined wheat flour", "refined flour", "all purpose flour"],
+  "refined sugar": ["refined sugar", "white sugar", "sugar syrup", "invert sugar"],
+};
+
+/** Does the sheet back up an absence claim, or contradict it? */
+function checkAbsence(target: string, ref: AuditReference): { contradicted: boolean; evidence: string } {
+  const nutrient = NUTRIENTS.find((n) => n.names.includes(target));
+  if (nutrient && ref.nutrition.length) {
+    const block = ref.nutrition.find((b) => b.grammage === 100) ?? ref.nutrition[0];
+    const v = block[nutrient.key] as number | null;
+    if (v !== null && v !== undefined) {
+      return { contradicted: v > 0, evidence: `the sheet shows ${nutrient.label.toLowerCase()} of ${fmt(v)}${nutrient.unit} per ${fmt(block.grammage)}g` };
+    }
+  }
+  const ingredients = ` ${normalize(ref.ingredients)} `;
+  const singular = target.endsWith("s") ? target.slice(0, -1) : target;
+  const forms = [target, singular, ...(ABSENCE_ALIASES[target] ?? [])];
+  const hit = forms.find((f) => f && ingredients.includes(` ${f}`));
+  if (hit) return { contradicted: true, evidence: `the sheet's ingredient list includes "${hit}"` };
+  return { contradicted: false, evidence: ref.ingredients.trim() ? `the sheet's ingredient list has no ${target}` : "" };
+}
+
 function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const checks: AuditCheck[] = [];
   const claims = ref.usps
@@ -86,6 +115,22 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       checks.push({ label: `Claim: ${claim}`, status: "pass", found: "Present" });
       continue;
     }
+    const absence = absenceTarget(claim);
+    if (absence) {
+      const { contradicted, evidence } = checkAbsence(absence, ref);
+      checks.push(
+        contradicted
+          ? { label: `Claim: ${claim}`, status: "fail", expected: claim, found: "Contradicted by the sheet", note: `The sheet lists this as a claim, but ${evidence}.` }
+          : {
+              label: `Claim: ${claim}`,
+              status: "warn",
+              expected: claim,
+              found: "Not printed",
+              note: `The label doesn't print this claim${evidence ? `, though ${evidence}` : ""}. It may be on a panel that wasn't provided.`,
+            }
+      );
+      continue;
+    }
     const missing = words(claim).filter((w) => !labelWords.has(w));
     checks.push({
       label: `Claim: ${claim}`,
@@ -94,7 +139,7 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       found: "Missing",
       note: missing.length
         ? `Words not on the label: ${missing.join(", ")}. It may be on a panel that wasn't provided.`
-        : "All the words appear on the label but not together as this claim.",
+        : "The label doesn't print this claim (its words only appear in other places). It may be on a panel that wasn't provided.",
     });
   }
 
