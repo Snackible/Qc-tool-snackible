@@ -41,7 +41,11 @@ function checkName(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     return [{ label: "Product name", status: "pass", expected: ref.productName, found: ref.productName }];
   }
   const labelWords = new Set(ctx.views.flatMap((v) => v.split(" ")));
-  const missing = words(ref.productName).filter((w) => !labelWords.has(w));
+  // OCR reads accented letters badly ("jalapeño" -> "jalapefio"), so near-misses on longer words count as present
+  const present = (w: string) =>
+    labelWords.has(w) ||
+    (ctx.ocr && w.length >= 5 && Array.from(labelWords).some((l) => editDistance(w, l, w.length >= 8 ? 2 : 1) <= (w.length >= 8 ? 2 : 1)));
+  const missing = words(ref.productName).filter((w) => !present(w));
   if (missing.length === 0) {
     return [{
       label: "Product name",
@@ -252,12 +256,14 @@ function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap 
 
 // A component heading ("Pizza Sticks:", "Seasoning :") sits at the start of the list or right after a full stop.
 const COMPONENT_HEADING = /(?:^|\.\s+)([A-ZÀ-Ý][A-Za-zÀ-ÿ&'’ ]{1,40}?)\s*:\s/;
+// OCR often drops the full stop that ends the previous component's list, leaving only its closing bracket or nothing
+const COMPONENT_HEADING_OCR = /(?:^|[.)]\s+)([A-ZÀ-Ý][A-Za-zÀ-ÿ&'’ ]{1,40}?)\s*:\s/;
 const ALLOWED_CAPS = new Set(["INS", "GMO", "FSSAI"]);
 
-function segmentsOf(listText: string): { heading: string | null; body: string }[] {
+function segmentsOf(listText: string, ocr = false): { heading: string | null; body: string }[] {
   const text = listText.trim();
-  const heads = findAll(COMPONENT_HEADING, text).map((m) => ({
-    start: m.index + (m[0].startsWith(".") ? m[0].indexOf(m[1]) : 0),
+  const heads = findAll(ocr ? COMPONENT_HEADING_OCR : COMPONENT_HEADING, text).map((m) => ({
+    start: m.index + (/^[.)]/.test(m[0]) ? m[0].indexOf(m[1]) : 0),
     end: m.index + m[0].length,
     heading: m[1].trim(),
   }));
@@ -355,7 +361,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   } else {
     const text = collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x));
     const { list, statement } = splitList(text);
-    const segments = segmentsOf(list);
+    const segments = segmentsOf(list, ctx.ocr);
     const sheet = splitList(ref.ingredients.replace(/\s+/g, " "));
 
     // match against the sheet: the sheet may cover only part of a combo, so only sheet words missing from the label count
@@ -494,7 +500,11 @@ function ocrFix(token: string): string {
   return token.replace(/^(\d+):(\d+)/, "$1.$2").replace(/^[Oo](m?g)?$/, "0$1");
 }
 function ocrAlternatives(token: string): string[] {
-  return /^\d+(\.\d+)?9$/.test(token) ? [token.slice(0, -1)] : [];
+  const alts: string[] = [];
+  if (/^\d+(\.\d+)?9$/.test(token)) alts.push(token.slice(0, -1));
+  // small print often loses its decimal point ("106" for 10.6, "066" for 0.66)
+  if (/^\d{2,4}$/.test(token)) for (let i = 1; i < token.length; i++) alts.push(token.slice(0, i) + "." + token.slice(i));
+  return alts;
 }
 
 function parseCell(token: string): number | null | undefined {
@@ -749,7 +759,10 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     checks.push({ label: "Manufacturer name", status: "skip", note: "The sheet has no manufacturer name to compare." });
   }
 
-  const labelPins = findAll(/\b[1-9]\d{5}\b/, ctx.flat);
+  // six digits that sit in a longer run of digits (a barcode printed as "8 906151 234498") are not pincodes
+  const labelPins = findAll(/\b[1-9]\d{5}\b/, ctx.flat).filter(
+    (m) => !/\d\s?$/.test(ctx.flat.slice(Math.max(0, m.index - 2), m.index)) && !/^\s?\d/.test(ctx.flat.slice(m.index + 6, m.index + 8))
+  );
   const sheetPins = uniq(findAll(/\b[1-9]\d{5}\b/, ref.manufacturer).map((m) => m[0]));
   if (sheetPins.length) {
     const missing = sheetPins.filter((p) => !labelPins.some((l) => l[0] === p));
@@ -799,7 +812,7 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 export function runRulesAudit(label: ExtractedLabel, ref: AuditReference): AuditReport {
-  const rows = buildRows(label.items, label.source === "ocr" ? 4 : 2.5);
+  const rows = buildRows(label.items, label.source === "ocr" ? 4.8 : 2.5);
   const ocr = label.source === "ocr";
   const ctx: Ctx = { rows, flat: rows.map(rowText).join(" "), views: buildViews(label.items, rows), ocr };
   const notes: string[] = [

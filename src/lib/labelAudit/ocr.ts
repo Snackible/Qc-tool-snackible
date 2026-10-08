@@ -10,7 +10,7 @@ type OcrWord = { text: string; confidence: number; bbox: { x0: number; y0: numbe
 export type OcrProgress = { stage: "loading" | "reading"; pct: number };
 
 const MIN_WORD_CONFIDENCE = 40;
-const GOOD_ENOUGH_SCORE = 150;
+const MERGE_MIN_CONFIDENCE = 70;
 // the rules engine's spacing thresholds assume roughly 7pt text (PDF units), so OCR pixels are scaled to match
 const TARGET_TEXT_HEIGHT = 7;
 
@@ -44,8 +44,70 @@ function prepare(source: HTMLCanvasElement, invert: boolean): HTMLCanvasElement 
     d[i] = d[i + 1] = d[i + 2] = g;
     d[i + 3] = 255;
   }
+  removeRules(d, canvas.width, canvas.height);
   ctx.putImageData(img, 0, 0);
   return canvas;
+}
+
+/** Table borders and barcode bars confuse Tesseract's layout analysis (a bordered table can come back nearly empty), so long thin dark runs are painted out. */
+function removeRules(d: Uint8ClampedArray, w: number, h: number) {
+  const thickness = (isInk: (p: number) => boolean, W: number, H: number, x: number, y: number, horizontal: boolean) => {
+    let n = 1;
+    for (let i = 1; i <= 40; i++) {
+      const [px, py] = horizontal ? [x + i, y] : [x, y + i];
+      if (px >= W || py >= H || !isInk(py * W + px)) break;
+      n++;
+    }
+    for (let i = 1; i <= 40; i++) {
+      const [px, py] = horizontal ? [x - i, y] : [x, y - i];
+      if (px < 0 || py < 0 || !isInk(py * W + px)) break;
+      n++;
+    }
+    return n;
+  };
+  const minRun = Math.round(Math.max(w, h) * 0.025); // longer than any letter stroke
+  const kill = new Uint8Array(w * h);
+  const maxThick = Math.max(4, Math.round(Math.max(w, h) * 0.004)); // rules are thin; a filled panel or a bold headline is not
+  const ink = (p: number) => d[p * 4] < 128;
+  for (let y = 0; y < h; y++) {
+    let x = 0;
+    while (x < w) {
+      if (!ink(y * w + x)) { x++; continue; }
+      let e = x;
+      while (e < w && ink(y * w + e)) e++;
+      if (e - x >= minRun && thickness(ink, w, h, (x + e) >> 1, y, false) <= maxThick) for (let q = x; q < e; q++) kill[y * w + q] = 1;
+      x = e;
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let y = 0;
+    while (y < h) {
+      if (!ink(y * w + x)) { y++; continue; }
+      let e = y;
+      while (e < h && ink(e * w + x)) e++;
+      if (e - y >= minRun && thickness(ink, w, h, x, (y + e) >> 1, true) <= maxThick) for (let q = y; q < e; q++) kill[q * w + x] = 1;
+      y = e;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      // the line's anti-aliased edge pixels go too
+      const hit = kill[p] || (x > 0 && kill[p - 1]) || (x < w - 1 && kill[p + 1]) || (y > 0 && kill[p - w]) || (y < h - 1 && kill[p + w]);
+      if (hit && d[p * 4] < 200) d[p * 4] = d[p * 4 + 1] = d[p * 4 + 2] = 255;
+    }
+  }
+}
+
+/** Adds the secondary read's confident words wherever the primary read found nothing. */
+function mergeWords(primary: OcrWord[], secondary: OcrWord[]): OcrWord[] {
+  const overlaps = (a: OcrWord["bbox"], b: OcrWord["bbox"]) => {
+    const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+    const h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+    return w > 0 && h > 0 && (w * h) / ((a.x1 - a.x0) * (a.y1 - a.y0)) > 0.2;
+  };
+  const extra = secondary.filter((w) => w.confidence >= MERGE_MIN_CONFIDENCE && /[A-Za-z0-9]/.test(w.text) && !primary.some((p) => overlaps(w.bbox, p.bbox)));
+  return [...primary, ...extra];
 }
 
 const score = (words: OcrWord[]) => words.reduce((n, w) => n + (w.confidence >= 60 ? w.text.length : 0), 0);
@@ -96,12 +158,14 @@ export async function ocrCanvases(canvases: HTMLCanvasElement[], onProgress?: (p
         for (const b of data.blocks ?? []) for (const p of b.paragraphs) for (const l of p.lines) for (const w of l.words) words.push(w);
         return { words, height: prepared.height };
       };
-      let result = await run(false);
-      // light text on a dark or coloured panel often reads badly the normal way round: try inverted and keep the better read
-      if (score(result.words) < GOOD_ENOUGH_SCORE) {
-        const inverted = await run(true);
-        if (score(inverted.words) > score(result.words)) result = inverted;
-      }
+      // a label mixes dark-on-light and light-on-dark panels, and each reads well only the right way round: read both ways,
+      // keep the better read, and fill its gaps with confident words from the other
+      const normal = await run(false);
+      const inverted = await run(true);
+      const [best, other] = score(inverted.words) > score(normal.words) ? [inverted, normal] : [normal, inverted];
+      // a much weaker other read is mostly noise (the wrong polarity), so it is only merged when it found a fair amount of real text too
+      const useOther = score(other.words) >= score(best.words) * 0.4;
+      const result = { words: useOther ? mergeWords(best.words, other.words) : best.words, height: best.height };
       items.push(...wordsToItems(result.words, result.height, page + 1));
     }
     return { items, pageCount: canvases.length, charCount: items.reduce((n, i) => n + i.s.length, 0), source: "ocr" };

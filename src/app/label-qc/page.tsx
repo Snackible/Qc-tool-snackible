@@ -21,7 +21,7 @@ const STATUS_STYLE: Record<CheckStatus, { color: string; bg: string; label: stri
   skip: { color: "var(--text-secondary)", bg: "rgba(155,191,190,0.12)", label: "Not checked", icon: "minus-circle" },
 };
 
-const OCR_SIDE = 2400;
+const OCR_SIDE = 3200;
 
 type ExtractState =
   | { state: "idle" }
@@ -156,7 +156,7 @@ export default function LabelQCPage() {
       const renderer = await openRenderer(f);
       let canvases: HTMLCanvasElement[];
       try {
-        canvases = await renderer.render(OCR_SIDE, { upscale: true });
+        canvases = await renderer.render(OCR_SIDE, { upscale: true, crop: true });
       } finally {
         await renderer.close();
       }
