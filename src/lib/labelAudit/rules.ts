@@ -5,6 +5,7 @@
  * never a guessed pass/fail.
  */
 import { NutritionBlock } from "../types";
+import { flattenItems } from "./flatten";
 import { NUTRIENTS, UNIT_WORDS } from "./nutrients";
 import { AuditReference } from "./reference";
 import { Row, buildRows, buildViews, editDistance, joinItems, normalize, rowText, viewsContain, words } from "./textUtils";
@@ -503,7 +504,8 @@ function ocrAlternatives(token: string): string[] {
   const alts: string[] = [];
   if (/^\d+(\.\d+)?9$/.test(token)) alts.push(token.slice(0, -1));
   // small print often loses its decimal point ("106" for 10.6, "066" for 0.66)
-  if (/^\d{2,4}$/.test(token)) for (let i = 1; i < token.length; i++) alts.push(token.slice(0, i) + "." + token.slice(i));
+  const m = token.match(/^(\d{2,5})(kcal|kj|mg|mcg|gm|g)?$/i);
+  if (m) for (let i = 1; i < m[1].length; i++) alts.push(m[1].slice(0, i) + "." + m[1].slice(i) + (m[2] ?? ""));
   return alts;
 }
 
@@ -812,9 +814,11 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
 // ── Entry point ──────────────────────────────────────────────────────────────
 
 export function runRulesAudit(label: ExtractedLabel, ref: AuditReference): AuditReport {
-  const rows = buildRows(label.items, label.source === "ocr" ? 4.8 : 2.5);
   const ocr = label.source === "ocr";
-  const ctx: Ctx = { rows, flat: rows.map(rowText).join(" "), views: buildViews(label.items, rows), ocr };
+  // OCR of a tilted or handheld photo gives sloping baselines; flatten the word positions so rows line up
+  const items = ocr ? flattenItems(label.items) : label.items;
+  const rows = buildRows(items, ocr ? 4.8 : 2.5);
+  const ctx: Ctx = { rows, flat: rows.map(rowText).join(" "), views: buildViews(items, rows), ocr };
   const notes: string[] = [
     ocr
       ? "Checked by the rules engine on text read from the image by OCR (no AI). OCR can misread small, tilted or low-contrast text, so confirm any surprising result on the label itself. Anything it couldn't locate is marked Not checked rather than guessed."
