@@ -109,16 +109,20 @@ function madeWithTarget(claim: string): string | null {
 }
 
 /** Does an ingredient list (normalised) include the named ingredient, in singular or plural form? */
-function listHas(listNorm: string, target: string): boolean {
+function listHas(listNorm: string, target: string, ocr = false): boolean {
   const singular = target.endsWith("s") ? target.slice(0, -1) : target;
-  return [target, singular].some((f) => f && ` ${listNorm} `.includes(` ${f}`));
+  if ([target, singular].some((f) => f && ` ${listNorm} `.includes(` ${f}`))) return true;
+  if (!ocr) return false;
+  // OCR garbles words: every word of the target must have a near match in the list
+  const have = listNorm.split(" ");
+  return target.split(" ").every((w) => have.some((l) => l === w || (w.length >= 5 && editDistance(w, l, w.length >= 7 ? 2 : 1) <= (w.length >= 7 ? 2 : 1))));
 }
 
 /** The ingredient list printed on the label, if the label has an "Ingredients" heading. */
 function labelIngredientList(ctx: Ctx): string {
   const head = findHeading(ctx.rows, /^ingredients?\b/);
   if (!head) return "";
-  return collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x));
+  return collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x, ctx.rows[head.row].y));
 }
 
 /** Splits a USP on "/", but not inside brackets: "Source of protein (3.85g/70g and 5.50g/100g)" is one claim. */
@@ -192,7 +196,7 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       const printed = viewsContain(ctx.views, norm);
       const inSheet = listHas(normalize(ref.ingredients), madeWith);
       const labelList = labelIngredientList(ctx);
-      const inLabel = labelList ? listHas(normalize(labelList), madeWith) : null;
+      const inLabel = labelList ? listHas(normalize(labelList), madeWith, ctx.ocr) : null;
       if (ref.ingredients.trim() && !inSheet) {
         checks.push({ label: `Claim: ${claim}`, status: "fail", expected: claim, found: "Contradicted by the sheet", note: `The sheet lists this as a claim, but its ingredient list has no ${madeWith}.` });
       } else if (inLabel === false) {
@@ -247,6 +251,24 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     });
   }
 
+  // A label that prints none (or hardly any) of the claims is almost certainly missing the panel they sit on (usually the
+  // front), so "not printed" on every claim is noise. Say so once instead, and only call claims missing when the claims
+  // panel is clearly there.
+  const isClaim = (c: AuditCheck) => c.label.startsWith("Claim: ");
+  const printedCount = checks.filter((c) => isClaim(c) && c.status === "pass").length;
+  const claimsPanelPresent = claims.length === 0 || printedCount >= Math.max(1, Math.ceil(claims.length * 0.4));
+  if (!claimsPanelPresent) {
+    const unprinted = (c: AuditCheck) => isClaim(c) && c.status === "warn" && (c.found === "Not printed" || c.found === "Missing");
+    if (checks.some(unprinted)) {
+      for (let i = checks.length - 1; i >= 0; i--) if (unprinted(checks[i])) checks.splice(i, 1);
+      checks.unshift({
+        label: "USP claims",
+        status: "skip",
+        note: "None of the sheet's claims are on the uploaded label, so the panel they sit on (usually the front) wasn't provided. Upload it to check them.",
+      });
+    }
+  }
+
   for (const [core, detail] of Array.from(details.entries())) {
     const figures = checkClaimFigures(core, detail, ref);
     if (figures) checks.push(figures);
@@ -257,6 +279,8 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     checks.push({ label: "Cooking method pairs with Not Fried", status: "skip", sop_rule: true, note: "No Roasted/Baked/Popped claim in the sheet's USPs." });
   } else if (viewsContain(ctx.views, "not fried")) {
     checks.push({ label: "Cooking method pairs with Not Fried", status: "pass", sop_rule: true, found: "'Not Fried' is on the label" });
+  } else if (!claimsPanelPresent) {
+    checks.push({ label: "Cooking method pairs with Not Fried", status: "skip", sop_rule: true, note: "The panel with the claims wasn't provided, so this can't be checked." });
   } else {
     checks.push({
       label: "Cooking method pairs with Not Fried",
@@ -331,7 +355,7 @@ function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap 
   }
   const sameRow = joinItems(sameRowItems);
   const parts = [lead, sameRow].filter(Boolean);
-  const maxGap = Math.max(head.h, 4) * 2.4;
+  const maxGap = Math.max(head.h, 4) * 3.6; // a blank line between two components is about two row pitches
   let prevY = row0.y;
   let inContains = false;
 
@@ -452,8 +476,11 @@ function satisfied(sheetGroup: string, label: Set<string>): boolean {
 }
 
 /** Right edge for a text block at x0: the start of a nutrition table's label column further right on the label, if there is one. */
-function blockLimit(ctx: Ctx, x0: number): number {
-  const right = parseNutritionRows(ctx).labelXs.filter((x) => x > x0 + 30);
+function blockLimit(ctx: Ctx, x0: number, y?: number): number {
+  const { labelXs, labelYs } = parseNutritionRows(ctx);
+  // only a table beside the block can cut it off: its names sit within the block's height from the heading. A table stacked
+  // above or below it (same x range) doesn't narrow it.
+  const right = labelXs.filter((x, k) => x > x0 + 30 && (y === undefined || (labelYs[k] <= y + 3 && labelYs[k] >= y - 130)));
   return right.length ? Math.min(...right) - 2 : Infinity;
 }
 
@@ -464,7 +491,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   if (!head) {
     checks.push({ label: "Ingredients list", status: "warn", found: "No 'Ingredients' heading found in the label text" });
   } else {
-    const text = collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x));
+    const text = collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x, ctx.rows[head.row].y));
     const { list, statement } = splitList(text);
     const segments = segmentsOf(list, ctx.ocr);
     const sheet = splitList(ref.ingredients.replace(/\s+/g, " "));
@@ -472,7 +499,10 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     // match against the sheet: the sheet may cover only part of a combo, so only sheet words missing from the label count
     const labelTokens = new Set(words(text));
     const sheetTokens = uniq(words(sheet.list + " " + sheet.statement)).filter((w) => w.length > 1);
-    const missing = sheetTokens.filter((w) => !labelTokens.has(w));
+    // OCR garbles words ("oatmeal" -> "oaneal"), so with OCR a word within a couple of letters counts as present
+    const labelList = Array.from(labelTokens);
+    const nearPresent = (w: string) => ctx.ocr && w.length >= 5 && labelList.some((l) => editDistance(w, l, w.length >= 7 ? 2 : 1) <= (w.length >= 7 ? 2 : 1));
+    const missing = sheetTokens.filter((w) => !labelTokens.has(w) && !nearPresent(w));
     if (!ref.ingredients.trim()) {
       checks.push({ label: "Ingredients match the sheet", status: "skip", note: "The sheet has no ingredients for this product." });
     } else if (missing.length === 0) {
@@ -570,7 +600,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   // allergen declaration
   const sheetGroups = allergenGroups(ref.allergens);
   const aHead = findHeading(ctx.rows, /^allergen/);
-  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x)) : "";
+  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x, ctx.rows[aHead.row].y)) : "";
   if (sheetGroups.size === 0) {
     checks.push({ label: "Allergen declaration", status: "skip", note: "The sheet lists no allergens." });
   } else if (!aText) {
@@ -595,9 +625,8 @@ function calcStatus(master: number, found: number, floor: number): CheckStatus {
   const diff = Math.abs(master - found);
   if (diff <= floor) return "pass";
   const deviation = master !== 0 ? (diff / Math.abs(master)) * 100 : 100;
-  if (deviation > 15) return "fail";
-  if (deviation >= 2) return "warn";
-  return "pass";
+  // a value that was read and is wrong is red; amber is only for what couldn't be read or confirmed
+  return deviation >= 2 ? "fail" : "pass";
 }
 
 /** Tesseract slips in nutrition tables: "10:2" for 10.2, "Og"/"Omg" for 0g/0mg, and a unit "g" read as a trailing 9 ("6g" -> "69"). */
@@ -617,16 +646,18 @@ function parseCell(token: string): number | null | undefined {
   const t = token.trim();
   if (/^[-–—]$/.test(t)) return null;
   if (/^(nil|blq|nd|trace)$/i.test(t)) return 0;
+  if (/^(?:nd|blq|bql)\s*[<＜≤]\s*\d+(?:\.\d+)?\s*(?:g|mg|mcg|kcal)?$/i.test(t)) return 0; // "ND<0.03g": not detected
   const m = t.match(/^[<≤]?\s*(\d+(?:\.\d+)?)\s*(?:kcal|kj|g|gm|mg|mcg|%)?$/i);
   return m ? parseFloat(m[1]) : undefined;
 }
 
 type LabelNutrient = { values: (number | null)[]; rowLabel: string };
 
-function parseNutritionRows(ctx: Ctx) {
+function parseNutritionRows(ctx: Ctx, expected?: Map<string, number[]>) {
   const found = new Map<string, LabelNutrient>();
   const typos: { found: string; expected: string }[] = [];
   const labelXs: number[] = [];
+  const labelYs: number[] = [];
   const cell = (tok: string) => parseCell(ctx.ocr ? ocrFix(tok) : tok);
   const labelGap = ctx.ocr ? 4.5 : 30; // OCR packs a text column and a table closer together than a PDF does
   for (const row of ctx.rows) {
@@ -666,14 +697,233 @@ function parseNutritionRows(ctx: Ctx) {
     const prev = found.get(nutrient.key as string);
     found.set(nutrient.key as string, { values: prev ? [...prev.values, ...values] : values, rowLabel });
     labelXs.push(row.items[labelStart].x);
+    labelYs.push(row.y);
     break; // this line's nutrient is recorded
     }
   }
-  return { found, typos, labelXs };
+  if (ctx.ocr) addGeometricValues(ctx, found, typos, cell, expected);
+  return { found, typos, labelXs, labelYs };
+}
+
+/**
+ * On a photo the rows of a table slope or curve, so a nutrient's name and its value can land on different rows. Pair each
+ * name with the numbers to its right at nearly the same height instead (allowing for the slope of the rows). When this
+ * finds a table it replaces the row-based values.
+ */
+function addGeometricValues(
+  ctx: Ctx,
+  found: Map<string, LabelNutrient>,
+  typos: { found: string; expected: string }[],
+  cell: (tok: string) => number | null | undefined,
+  expected?: Map<string, number[]>
+) {
+  const items = ctx.rows.flatMap((r) => r.items);
+  if (items.length < 20) return;
+  const H = items.map((i) => i.h).sort((a, b) => a - b)[Math.floor(items.length / 2)] || 7;
+  const numeric = items.filter((i) => i.s.split(/\s+/).every((tok) => cell(tok) !== undefined));
+
+  type Label = { nutrient: (typeof NUTRIENTS)[number]; item: LabelItem; text: string; fuzzy: boolean; weak: boolean };
+  const labels: Label[] = [];
+  for (const row of ctx.rows) {
+    for (let i = 0; i < row.items.length; ) {
+      let hit: Label | null = null;
+      let len = 0;
+      for (const n of [3, 2, 1]) {
+        if (i + n > row.items.length) continue;
+        const win = row.items.slice(i, i + n);
+        if (win.some((w, k) => k > 0 && w.x - (win[k - 1].x + win[k - 1].w) > H * 1.5)) continue;
+        const text = joinItems(win);
+        const norm = words(text).filter((w) => !UNIT_WORDS.has(w)).join(" ");
+        if (!norm) continue;
+        // a bare "Fat" or "Sugar" right after another word is the end of a longer name we don't track ("Unsaturated Fat")
+        const before = i > 0 ? row.items[i - 1] : null;
+        if (n === 1 && /^(fats?|sugars?)$/.test(norm) && before && win[0].x - (before.x + before.w) <= H * 1.5) continue;
+        let nutrient = NUTRIENTS.find((d) => d.names.includes(norm));
+        let fuzzy = false;
+        if (!nutrient) {
+          for (const d of NUTRIENTS) {
+            if (d.names.some((name) => name.length >= 6 && editDistance(norm, name, name.length >= 9 ? 2 : 1) <= (name.length >= 9 ? 2 : 1))) {
+              nutrient = d;
+              fuzzy = true;
+              break;
+            }
+          }
+        }
+        if (nutrient) {
+          hit = { nutrient, item: win[win.length - 1], text, fuzzy, weak: n === 1 && /^(fats?|sugars?)$/.test(norm) };
+          len = n;
+          break;
+        }
+      }
+      if (hit) {
+        labels.push(hit);
+        i += len;
+      } else i++;
+    }
+  }
+  // a bare "Fat" is probably the tail of "Saturated Fat" whose first word the OCR missed: it counts only if the table has no
+  // proper name for that nutrient
+  for (let k = labels.length - 1; k >= 0; k--) {
+    const l = labels[k];
+    if (l.weak && labels.some((o) => !o.weak && o.nutrient === l.nutrient && o.item.page === l.item.page)) labels.splice(k, 1);
+  }
+  if (labels.length < 3) return;
+
+  const result = new Map<string, LabelNutrient>();
+  const addValues = (l: Label, c0: LabelItem, slopeAtLabel: number, pool: LabelItem[]) => {
+    const values: (number | null)[] = [];
+    const push = (it: LabelItem) => {
+      for (const tok of it.s.split(/\s+/)) {
+        const v = cell(tok);
+        if (v !== undefined) values.push(v);
+        for (const alt of ocrAlternatives(ocrFix(tok))) {
+          const a = parseCell(alt);
+          if (typeof a === "number") values.push(a);
+        }
+      }
+    };
+    push(c0);
+    // the columns after the first (per 100g, %RDA): the number nearest the row's height, left to right
+    let lastX = c0.x;
+    for (let extra = 0; extra < 2; extra++) {
+      const next = pool
+        .filter((c) => c.x > lastX + H * 3 && c.x - c0.x <= H * 14 && Math.abs(c.y - c0.y - slopeAtLabel * (c.x - c0.x)) <= H * 0.55)
+        .sort((a, b) => a.x - b.x)[0];
+      if (!next) break;
+      push(next);
+      lastX = next.x;
+    }
+    // a pack with two tables (a snack and its dip) names each nutrient twice: keep every table's values
+    const prev = result.get(l.nutrient.key as string);
+    result.set(l.nutrient.key as string, { values: prev ? [...prev.values, ...values] : values, rowLabel: prev ? prev.rowLabel : l.text });
+    if (l.fuzzy && !typos.some((t) => t.expected === l.nutrient.label)) typos.push({ found: l.text.replace(/\s*\([^)]*\)\s*/g, "").trim(), expected: l.nutrient.label });
+  };
+
+  for (const page of Array.from(new Set(labels.map((l) => l.item.page)))) {
+    const pl = labels.filter((l) => l.item.page === page);
+    if (pl.length < 3) continue;
+    const pool = numeric.filter((c) => c.page === page);
+    const base0 = pl.map((l) => l.item.x + l.item.w).sort((a, b) => a - b)[Math.floor(pl.length / 2)];
+    const mid = (c: LabelItem) => c.x + c.w / 2; // cells are centred, so columns line up by their centres
+    const right = pool.filter((c) => c.x >= base0 - 2 && c.x - base0 <= H * 16).sort((a, b) => mid(a) - mid(b));
+
+    // the first value column: the leftmost dense stack of numbers (by their centres) with about as many numbers as there are
+    // names; found by counting neighbours, so two close columns don't merge
+    const need = Math.max(3, Math.ceil(pl.length * 0.4));
+    const countNear = (m: number) => right.filter((c) => Math.abs(mid(c) - m) <= H * 1.2).length;
+    const start = right.find((c) => countNear(mid(c)) >= need);
+    if (!start) continue;
+    let center = mid(start);
+    for (let k = 0; k < 3; k++) {
+      const members = right.filter((c) => Math.abs(mid(c) - center) <= H * 1.2);
+      center = members.reduce((n, c) => n + mid(c), 0) / members.length;
+    }
+    const col = right.filter((c) => Math.abs(mid(c) - center) <= H * 1.2);
+    const xcol = col.reduce((n, c) => n + c.x, 0) / col.length;
+
+    // what each number in the column could be (OCR drops decimal points), to compare with the sheet
+    const valsOf = new Map<LabelItem, number[]>();
+    for (const c of col) {
+      const vs: number[] = [];
+      for (const tok of c.s.split(/\s+/)) {
+        const v = cell(tok);
+        if (typeof v === "number") vs.push(v);
+        for (const alt of ocrAlternatives(ocrFix(tok))) {
+          const a = parseCell(alt);
+          if (typeof a === "number") vs.push(a);
+        }
+      }
+      valsOf.set(c, vs);
+    }
+    const agrees = (l: Label, c: LabelItem) => {
+      const exp = expected?.get(l.nutrient.key as string);
+      if (!exp) return false;
+      return (valsOf.get(c) ?? []).some((v) => exp.some((e) => Math.abs(v - e) <= Math.max(l.nutrient.floor, Math.abs(e) * 0.02)));
+    };
+
+    const ys = pl.map((l) => l.item.y).sort((a, b) => b - a);
+    const gaps = ys.slice(1).map((y, i) => ys[i] - y).filter((g) => g > H * 0.5);
+    const pitch = gaps.length ? gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : H * 1.6;
+    const yMid = (ys[0] + ys[ys.length - 1]) / 2;
+    const yTop = ys[0] + pitch;
+    const yBottom = ys[ys.length - 1] - pitch;
+
+    // how the rows tilt (slope a, changing by b per unit of height, as on a curved or keystoned label) is found by which
+    // pairing leaves the fewest names without a number and numbers without a name; one-to-one pairing breaks the tie
+    // between "this row" and "the next row"
+    let best: { pairs: [Label, LabelItem][]; a: number; b: number; score: number } | null = null;
+    for (let a = -0.3; a <= 0.3001; a += 0.01) {
+      for (let b = -0.003; b <= 0.0031; b += 0.0003) {
+        const pairs = new Map<LabelItem, { l: Label; d: number }>();
+        for (const l of pl) {
+          const base = l.item.x + l.item.w;
+          const expY = l.item.y + (a + b * (l.item.y - yMid)) * (xcol - base);
+          let near: LabelItem | null = null;
+          let nd = Infinity;
+          for (const c of col) {
+            const d = Math.abs(c.y - expY);
+            if (d < nd) {
+              nd = d;
+              near = c;
+            }
+          }
+          if (near && nd <= pitch * 0.5) {
+            const prev = pairs.get(near);
+            if (!prev || nd < prev.d) pairs.set(near, { l, d: nd });
+          }
+        }
+        let unmatched = 0;
+        for (const c of col) if (!pairs.has(c) && c.y <= yTop && c.y >= yBottom) unmatched++;
+        let dist = 0;
+        let agree = 0;
+        pairs.forEach((p, c) => {
+          dist += p.d / pitch;
+          if (agrees(p.l, c)) agree++;
+        });
+        // pairing that makes the numbers agree with the sheet is the right row-to-row alignment: a wrongly shifted one
+        // would make nearly every number disagree, while a real error on the label spoils only one
+        const score = pairs.size - 0.8 * unmatched - 0.05 * dist - 0.02 * (Math.abs(a) + Math.abs(b) * 100) + 2 * agree;
+        if (!best || score > best.score) best = { pairs: Array.from(pairs.entries()).map(([c, p]) => [p.l, c] as [Label, LabelItem]), a, b, score };
+      }
+    }
+    if (!best) continue;
+    const fit = best;
+    for (const [l, c] of fit.pairs) addValues(l, c, fit.a + fit.b * (l.item.y - yMid), pool);
+
+    // a name the OCR missed leaves its number unpaired: give it to the nutrient whose sheet value it matches, if that nutrient
+    // is still unread and the number sits where that nutrient belongs in the table's usual order
+    if (expected) {
+      const order = NUTRIENTS.map((n) => n.key as string);
+      const paired = new Set(fit.pairs.map(([, c]) => c));
+      const anchors = fit.pairs.map(([l, c]) => ({ y: c.y, idx: order.indexOf(l.nutrient.key as string) })).sort((p, q) => q.y - p.y);
+      for (const c of col) {
+        if (paired.has(c)) continue;
+        const above = anchors.filter((an) => an.y > c.y).pop();
+        const below = anchors.find((an) => an.y < c.y);
+        const lo = above ? above.idx : -1;
+        const hi = below ? below.idx : order.length;
+        const fits = NUTRIENTS.filter((n, idx) => {
+          if (result.has(n.key as string) || idx <= lo || idx >= hi) return false;
+          const exp = expected.get(n.key as string);
+          return !!exp && (valsOf.get(c) ?? []).some((v) => exp.some((e) => Math.abs(v - e) <= Math.max(n.floor, Math.abs(e) * 0.02)));
+        });
+        if (fits.length === 1) {
+          const n = fits[0];
+          result.set(n.key as string, { values: valsOf.get(c) ?? [], rowLabel: n.label });
+        }
+      }
+    }
+  }
+  if (result.size >= 3) result.forEach((v, k) => found.set(k, v));
 }
 
 function checkNutrition(ctx: Ctx, ref: AuditReference, notes: string[]): AuditCheck[] {
-  const { found, typos } = parseNutritionRows(ctx);
+  const expectedValues = new Map<string, number[]>();
+  for (const n of NUTRIENTS) {
+    const vs = ref.nutrition.map((b) => b[n.key]).filter((v): v is number => typeof v === "number");
+    if (vs.length) expectedValues.set(n.key as string, vs);
+  }
+  const { found, typos } = parseNutritionRows(ctx, expectedValues);
   if (found.size < 3) {
     return [{ label: "Nutrition table", status: "warn", found: "Could not find a nutrition table in the label text" }];
   }
@@ -780,7 +1030,15 @@ function checkMrp(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const prices: number[] = [];
   const perGram = /^\s*\/?\s*-?\s*\)?\s*per\s*(?:gm|g|gram)/i;
   for (const m of findAll(/(?:mrp|m\.r\.p\.?)[\s.:\-]*(?:rs\.?|₹|inr)?[\s.:\-]*(\d+(?:\.\d+)?)/i, ctx.flat)) {
-    if (!perGram.test(ctx.flat.slice(m.index + m[0].length, m.index + m[0].length + 14))) prices.push(parseFloat(m[1]));
+    const after = ctx.flat.slice(m.index + m[0].length, m.index + m[0].length + 14);
+    // OCR reads the rupee sign as a digit ("MRP₹:60/-" -> "MRP3:60/-"): a lone digit followed by ":" and the real price is that
+    if (ctx.ocr && /^\d$/.test(m[1]) && /^\s*[:\-]\s*\d/.test(after)) continue;
+    if (!perGram.test(after)) prices.push(parseFloat(m[1]));
+  }
+  if (ctx.ocr) {
+    for (const m of findAll(/mrp\s*\d\s*[:\-]\s*(\d+(?:\.\d+)?)/i, ctx.flat)) {
+      if (!perGram.test(ctx.flat.slice(m.index + m[0].length, m.index + m[0].length + 14))) prices.push(parseFloat(m[1]));
+    }
   }
   for (const m of findAll(/(?:₹|rs\.?)\s*(\d+(?:\.\d+)?)\s*\/\s*-?/i, ctx.flat)) {
     if (!perGram.test(ctx.flat.slice(m.index + m[0].length, m.index + m[0].length + 14))) prices.push(parseFloat(m[1]));
@@ -849,12 +1107,38 @@ function manufacturerNames(manufacturer: string): string[] {
   return names.slice(0, 3);
 }
 
+/** Finds a six-digit pincode in label text: digits may be split by one space or hyphen, and with OCR one wrong digit is tolerated. */
+function findPincode(flat: string, pin: string, ocr: boolean): { index: number; end: number; digits: string; exact: boolean } | null {
+  const re = /\d(?:[ -]?\d){5}/g;
+  let near: { index: number; end: number; digits: string; exact: boolean } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(flat))) {
+    const digits = m[0].replace(/\D/g, "");
+    const before = flat[m.index - 1];
+    const after = flat[m.index + m[0].length];
+    if (digits.length !== 6 || (before && /\d/.test(before)) || (after && /\d/.test(after))) continue;
+    const hit = { index: m.index, end: m.index + m[0].length, digits, exact: digits === pin };
+    if (hit.exact) return hit;
+    if (ocr && !near) {
+      let diff = 0;
+      for (let i = 0; i < 6; i++) if (digits[i] !== pin[i]) diff++;
+      if (diff <= 1) near = hit;
+    }
+  }
+  return near;
+}
+
 function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const checks: AuditCheck[] = [];
 
   const names = manufacturerNames(ref.manufacturer);
   if (names.length) {
-    const missing = names.filter((n) => !viewsContain(ctx.views, normalize(n)));
+    // OCR garbles letters ("DIVINUTTY" -> "DMINUTTY"): with OCR every word of the name may be a near match
+    const labelWords = new Set(ctx.views.flatMap((v) => v.split(" ")));
+    const near = (n: string) =>
+      ctx.ocr &&
+      words(n).every((w) => labelWords.has(w) || (w.length >= 5 && Array.from(labelWords).some((l) => editDistance(w, l, w.length >= 8 ? 2 : 1) <= (w.length >= 8 ? 2 : 1))));
+    const missing = names.filter((n) => !viewsContain(ctx.views, normalize(n)) && !near(n));
     checks.push({
       label: "Manufacturer name",
       status: missing.length ? "fail" : "pass",
@@ -865,34 +1149,51 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     checks.push({ label: "Manufacturer name", status: "skip", note: "The sheet has no manufacturer name to compare." });
   }
 
-  // six digits that sit in a longer run of digits (a barcode printed as "8 906151 234498") are not pincodes
-  const labelPins = findAll(/\b[1-9]\d{5}\b/, ctx.flat).filter(
-    (m) => !/\d\s?$/.test(ctx.flat.slice(Math.max(0, m.index - 2), m.index)) && !/^\s?\d/.test(ctx.flat.slice(m.index + 6, m.index + 8))
-  );
+  // sheet pincodes are searched for directly (allowing a space or hyphen between digits, and for OCR one misread digit)
   const sheetPins = uniq(findAll(/\b[1-9]\d{5}\b/, ref.manufacturer).map((m) => m[0]));
+  const pinHits = sheetPins.map((pin) => ({ pin, hit: findPincode(ctx.flat, pin, ctx.ocr) }));
   if (sheetPins.length) {
-    const missing = sheetPins.filter((p) => !labelPins.some((l) => l[0] === p));
+    const missing = pinHits.filter((p) => !p.hit);
+    const misread = pinHits.filter((p) => p.hit && !p.hit.exact);
     checks.push({
       label: "Pincode matches the sheet",
-      status: missing.length ? "fail" : "pass",
+      status: missing.length ? "fail" : misread.length ? "warn" : "pass",
       expected: sheetPins.join(", "),
-      found: missing.length ? `Not on label: ${missing.join(", ")}` : undefined,
+      found: missing.length ? `Not on label: ${missing.map((p) => p.pin).join(", ")}` : misread.length ? `Read as ${misread.map((p) => p.hit!.digits).join(", ")}` : undefined,
+      note: misread.length && !missing.length ? "One digit differs, which is most likely an OCR misread. Check the label." : undefined,
     });
-  }
-  // when the sheet has pincodes, only those count: a misread number elsewhere (an OCR'd nutrient value, a batch number) is not an address
-  const addressPins = sheetPins.length ? labelPins.filter((m) => sheetPins.includes(m[0])) : labelPins;
-  if (addressPins.length === 0) {
-    checks.push({ label: "Full stop after pincode", status: "warn", sop_rule: true, expected: "PINCODE.", found: "No pincode found on label" });
+    const found = pinHits.filter((p) => p.hit);
+    if (found.length === 0) {
+      checks.push({ label: "Full stop after pincode", status: "warn", sop_rule: true, expected: "PINCODE.", found: "No pincode found on label" });
+    } else {
+      const bad = found.filter((p) => !/^\s*\./.test(ctx.flat.slice(p.hit!.end, p.hit!.end + 3)));
+      checks.push({
+        label: "Full stop after pincode",
+        status: bad.length ? "fail" : "pass",
+        sop_rule: true,
+        expected: "PINCODE.",
+        found: bad.length ? `No full stop after: ${uniq(bad.map((p) => p.hit!.digits)).join(", ")}` : undefined,
+        note: bad.length && ctx.ocr ? "The text was read by OCR, which often drops a small full stop, so check the label." : undefined,
+      });
+    }
   } else {
-    const bad = addressPins.filter((m) => !/^\s*\./.test(ctx.flat.slice(m.index + 6, m.index + 8)));
-    checks.push({
-      label: "Full stop after pincode",
-      status: bad.length ? "fail" : "pass",
-      sop_rule: true,
-      expected: "PINCODE.",
-      found: bad.length ? `No full stop after: ${uniq(bad.map((m) => m[0])).join(", ")}` : undefined,
-      note: bad.length && ctx.ocr ? "The text was read by OCR, which often drops a small full stop, so check the label." : undefined,
-    });
+    // no pincode in the sheet: any six-digit number that isn't part of a longer run (a barcode) counts
+    const labelPins = findAll(/\b[1-9]\d{5}\b/, ctx.flat).filter(
+      (m) => !/\d\s?$/.test(ctx.flat.slice(Math.max(0, m.index - 2), m.index)) && !/^\s?\d/.test(ctx.flat.slice(m.index + 6, m.index + 8))
+    );
+    if (labelPins.length === 0) {
+      checks.push({ label: "Full stop after pincode", status: "warn", sop_rule: true, expected: "PINCODE.", found: "No pincode found on label" });
+    } else {
+      const bad = labelPins.filter((m) => !/^\s*\./.test(ctx.flat.slice(m.index + 6, m.index + 8)));
+      checks.push({
+        label: "Full stop after pincode",
+        status: bad.length ? "fail" : "pass",
+        sop_rule: true,
+        expected: "PINCODE.",
+        found: bad.length ? `No full stop after: ${uniq(bad.map((m) => m[0])).join(", ")}` : undefined,
+        note: bad.length && ctx.ocr ? "The text was read by OCR, which often drops a small full stop, so check the label." : undefined,
+      });
+    }
   }
 
   const digits = ctx.flat.replace(/\s+/g, "");
@@ -907,8 +1208,24 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     });
   }
   const licHits = findAll(/lic\.?\s*no\.?\s*[:\-]?\s*(\d[\d\s]*\d)/i, ctx.flat);
+  // nothing from the address panel is on the label at all: it wasn't provided, which is not the same as being wrong
+  const nameFound = names.some((n) => viewsContain(ctx.views, normalize(n)));
+  const panelPresent = nameFound || pinHits.some((p) => p.hit) || licHits.length > 0 || /\b(manufactured|marketed|packed)\s+(?:&\s*marketed\s+)?by\b|\bfssai\b/i.test(ctx.flat);
+  if (!panelPresent) {
+    return [{ label: "Addresses", status: "skip", note: "The address panel (manufacturer, pincode, licence number) wasn't found on the uploaded label. Upload the panel that has it to check these." }];
+  }
   if (licHits.length) {
-    const badFormat = licHits.map((m) => m[1].replace(/\s+/g, "")).filter((d) => d.length !== 14);
+    // the number may be split into groups by spaces, but digits that follow a complete 14-digit number (a barcode, a phone number
+    // from the next column) are not part of it
+    const takeLicence = (raw: string) => {
+      let digits = "";
+      for (const g of raw.trim().split(/\s+/)) {
+        digits += g;
+        if (digits.length >= 14) break;
+      }
+      return digits;
+    };
+    const badFormat = licHits.map((m) => takeLicence(m[1])).filter((d) => d.length !== 14);
     checks.push({
       label: "FSSAI licence number is 14 digits",
       status: badFormat.length ? "fail" : "pass",
@@ -945,8 +1262,17 @@ export function runRulesAudit(label: ExtractedLabel, ref: AuditReference): Audit
   ];
 
   if (ocr) {
-    for (const step of steps) for (const c of step.checks) if (c.status === "fail") c.status = "warn";
-    notes.push("Because the text came from OCR, mismatches are marked Review rather than Fail.");
+    // OCR drops small full stops and swaps look-alike letters, so those findings stay Review; a wrong value, name, price or
+    // number that was read stays red, with a note to confirm it on the label
+    const fragile = /spelling|spelled|full stop|casing|capital|^product name/i;
+    for (const step of steps) {
+      for (const c of step.checks) {
+        if (c.status !== "fail") continue;
+        if (fragile.test(c.label)) c.status = "warn";
+        else c.note ??= "Read by OCR: if this looks wrong, check it on the label.";
+      }
+    }
+    notes.push("Spelling and full-stop findings are marked Review because OCR often misreads them. Values that were read and don't match the sheet are marked Fail.");
   }
 
   return {

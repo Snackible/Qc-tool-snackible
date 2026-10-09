@@ -1,0 +1,4 @@
+Models used by the in-browser OCR (src/lib/labelAudit/paddleOcr.ts):
+- det.onnx: PP-OCR text detection model (PaddleOCR, Apache License 2.0), ONNX conversion.
+- rec.onnx + dict.txt: PP-OCRv5 English text recognition model (PaddleOCR, Apache License 2.0), ONNX conversion.
+Source: https://github.com/PaddlePaddle/PaddleOCR , ONNX files from https://huggingface.co/monkt/paddleocr-onnx

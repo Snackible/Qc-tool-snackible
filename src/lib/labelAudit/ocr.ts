@@ -3,6 +3,7 @@
  * browser: free, no key. Word boxes are converted into the same positioned text items the rules engine reads from
  * a PDF, so every SOP check works on OCR text too (with lower confidence in the result).
  */
+import { paddleWords } from "./paddleOcr";
 import type { ExtractedLabel, LabelItem } from "./types";
 
 type OcrWord = { text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } };
@@ -130,7 +131,24 @@ export function wordsToItems(words: OcrWord[], canvasHeight: number, page: numbe
   }));
 }
 
+/**
+ * Reads the canvases with PaddleOCR (much better on photos, and about ten times faster); if its models or runtime can't
+ * be loaded (offline, blocked CDN) it falls back to Tesseract.
+ */
 export async function ocrCanvases(canvases: HTMLCanvasElement[], onProgress?: (p: OcrProgress) => void): Promise<ExtractedLabel> {
+  try {
+    const items: LabelItem[] = [];
+    for (let page = 0; page < canvases.length; page++) {
+      const words = await paddleWords(canvases[page], (p) => onProgress?.({ stage: p.stage, pct: ((page + p.pct / 100) / canvases.length) * 100 }));
+      items.push(...wordsToItems(words, canvases[page].height, page + 1));
+    }
+    return { items, pageCount: canvases.length, charCount: items.reduce((n, i) => n + i.s.length, 0), source: "ocr" };
+  } catch {
+    return tesseractCanvases(canvases, onProgress);
+  }
+}
+
+async function tesseractCanvases(canvases: HTMLCanvasElement[], onProgress?: (p: OcrProgress) => void): Promise<ExtractedLabel> {
   const { createWorker } = await import("tesseract.js");
   let page = 0;
   let best = 0;
