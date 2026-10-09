@@ -15,13 +15,12 @@ export default function BrandMark({ size = 34 }: { size?: number }) {
       </defs>
       <rect width="32" height="32" rx="9" fill={`url(#${id})`} />
       <rect x="0.5" y="0.5" width="31" height="31" rx="8.5" fill="none" stroke="rgba(255,255,255,0.14)" />
-      <g fill="none" stroke="#F0FAF9" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12.6 7l4.6 8.6" strokeWidth="3.4" />
-        <path d="M19.8 11.8a6.8 6.8 0 0 1-.4 10.8" strokeWidth="2" />
-        <path d="M11 19.8h7" strokeWidth="2" />
-        <path d="M9 24.4h14" strokeWidth="2.4" />
+      <g transform="translate(16 16.4) scale(1.12) translate(-16 -14.8)" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11.8 6.8l4.7 8.8" stroke="#F0FAF9" strokeWidth="3.6" />
+        <path d="M16.6 11.2c5.2 1.2 6.6 7.2 3.2 11.1" stroke="#F0FAF9" strokeWidth="2.2" />
+        <path d="M10.5 20h8" stroke="#B7C815" strokeWidth="2.2" />
+        <path d="M9 24.4h14" stroke="#F0FAF9" strokeWidth="2.4" />
       </g>
-      <circle cx="24" cy="8" r="2" fill="#B7C815" />
     </svg>
   );
 }
