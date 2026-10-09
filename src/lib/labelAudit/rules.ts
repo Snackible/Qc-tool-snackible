@@ -297,7 +297,11 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
 // ── Step 4: grammage ─────────────────────────────────────────────────────────
 
 function checkGrammage(ctx: Ctx, ref: AuditReference): AuditCheck[] {
-  const hits = findAll(/net\s*(?:wt|weight|quantity|qty)\b\.?\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(kg|gms?|grams?|g|ml|l)\b/i, ctx.flat);
+  const hits: string[][] = findAll(/net\s*(?:wt|weight|quantity|qty)\b\.?\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(kg|gms?|grams?|g|ml|l)\b/i, ctx.flat).map((m) => [m[0], m[1], m[2]]);
+  if (hits.length === 0 && ctx.ocr) {
+    // OCR reads the "g" after the weight as a 9 ("65g" -> "659")
+    for (const m of findAll(/net\s*(?:wt|weight|quantity|qty)\b\.?\s*[:\-]?\s*(\d{2,4})9(?!\d)/i, ctx.flat)) hits.push([m[0], m[1], "g"]);
+  }
   if (hits.length === 0) {
     return [{ label: "Net weight", status: "warn", expected: ref.packSizeG ? `${fmt(ref.packSizeG)}g` : undefined, found: "No 'Net Wt' found on label" }];
   }
@@ -557,7 +561,14 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     const labelComponentCount = segments.filter((s) => s.heading).length;
     if (ref.ingredients.trim() && labelComponentCount <= 1 && sheetSegments.filter((s) => s.heading).length <= 1) {
       const sheetSet = new Set(sheetTokens);
-      const extra = uniq(words(list)).filter((w) => w.length > 1 && !sheetSet.has(w) && !damagedBy.has(w)); // (damaged fragments are reported above)
+      let extra = uniq(words(list)).filter((w) => w.length > 1 && !sheetSet.has(w) && !damagedBy.has(w)); // (damaged fragments are reported above)
+      if (ctx.ocr) {
+        // with OCR most "extra" words are damaged copies of sheet words ("suar", "dextr", "powedise") or noise ("foz", "mg"):
+        // only a clean word that resembles nothing in the sheet is worth reporting
+        extra = extra.filter(
+          (w) => w.length >= 5 && !sheetTokens.some((t) => t.startsWith(w) || w.startsWith(t) || editDistance(w, t, Math.ceil(w.length * 0.45)) <= Math.ceil(w.length * 0.45))
+        );
+      }
       if (extra.length) {
         checks.push({
           label: "No extra ingredients on the label",

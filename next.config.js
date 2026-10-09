@@ -1,10 +1,10 @@
-// The version shown in the sidebar is major.minor from package.json: bump the minor number (1.1, 1.2, ...) for a
-// small update, and the major number (2.0, 3.0, ...) for a large one. Patch is not shown.
-const [vMajor, vMinor] = require("./package.json").version.split(".");
+// The version shown in the sidebar comes from package.json: the first number goes up for a large update, the second for a
+// medium one, and a third number is added for a small one (3.2, then 3.2.1, 3.2.2, ...). A trailing ".0" is not shown.
+const appVersion = require("./package.json").version.replace(/\.0$/, "");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  env: { NEXT_PUBLIC_APP_VERSION: `v${vMajor}.${vMinor}` },
+  env: { NEXT_PUBLIC_APP_VERSION: `v${appVersion}` },
   images: {
     remotePatterns: [],
   },

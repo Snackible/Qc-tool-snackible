@@ -75,6 +75,7 @@ export default function LabelQCPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [report, setReport] = useState<AuditReport | null>(null);
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<CheckStatus | null>(null); // show only the checks with this status
 
   useEffect(() => {
     fetch("/api/products")
@@ -210,6 +211,7 @@ export default function LabelQCPage() {
 
   const startReport = (r: AuditReport) => {
     setReport(r);
+    setStatusFilter(null);
     setCollapsed(new Set(r.steps.filter((s) => ["pass", "skip"].includes(stepStatus(s))).map((s) => s.step)));
   };
 
@@ -524,14 +526,39 @@ export default function LabelQCPage() {
             <Badge status={report.overall} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 16 }}>
-            {(["pass", "fail", "warn", "skip"] as CheckStatus[]).map((s) => (
-              <div key={s} style={{ background: "var(--panel-sunken)", boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "10px 12px" }}>
-                <div className="mono" style={{ fontSize: 24, fontWeight: 500, color: STATUS_STYLE[s].color, lineHeight: 1.1 }}>{counts[s]}</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{STATUS_STYLE[s].label}</div>
-              </div>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: statusFilter ? 8 : 16 }}>
+            {(["pass", "fail", "warn", "skip"] as CheckStatus[]).map((s) => {
+              const on = statusFilter === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  className="card-lift"
+                  disabled={counts[s] === 0}
+                  aria-pressed={on}
+                  aria-label={`${on ? "Show all checks" : `Show only ${STATUS_STYLE[s].label.toLowerCase()} checks`} (${counts[s]})`}
+                  onClick={() => setStatusFilter(on ? null : s)}
+                  style={{
+                    textAlign: "left", cursor: counts[s] === 0 ? "default" : "pointer", color: "inherit",
+                    background: on ? STATUS_STYLE[s].bg : "var(--panel-sunken)",
+                    border: "none", boxShadow: `inset 0 0 0 ${on ? 1.5 : 1}px ${on ? STATUS_STYLE[s].color : "var(--border)"}`,
+                    borderRadius: 10, padding: "10px 12px", opacity: counts[s] === 0 ? 0.55 : 1,
+                  }}
+                >
+                  <div className="mono" style={{ fontSize: 24, fontWeight: 500, color: STATUS_STYLE[s].color, lineHeight: 1.1 }}>{counts[s]}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{STATUS_STYLE[s].label}</div>
+                </button>
+              );
+            })}
           </div>
+          {statusFilter && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-secondary)", marginBottom: 14 }}>
+              <span>Showing only {STATUS_STYLE[statusFilter].label.toLowerCase()} checks ({counts[statusFilter]}).</span>
+              <button type="button" onClick={() => setStatusFilter(null)} style={{ background: "none", border: "none", color: "var(--accent-teal-bright)", fontSize: 13, textDecoration: "underline", padding: 0 }}>
+                Show all
+              </button>
+            </div>
+          )}
 
           {report.mode === "rules" && mergedLabel?.source === "ocr" && counts.warn / Math.max(1, counts.pass + counts.warn + counts.fail) >= 0.7 && (
             <div role="note" style={{ display: "flex", gap: 10, background: "rgba(255,192,0,0.1)", boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)", borderRadius: 12, padding: "12px 14px", color: "var(--amber-text)", marginBottom: 12, fontSize: 13.5 }}>
@@ -549,7 +576,9 @@ export default function LabelQCPage() {
           <div style={{ marginTop: 12 }}>
             {report.steps.map((step) => {
               const ss = stepStatus(step);
-              const open = !collapsed.has(step.step);
+              const shown = statusFilter ? step.checks.filter((c) => c.status === statusFilter) : step.checks;
+              if (statusFilter && shown.length === 0) return null;
+              const open = statusFilter ? true : !collapsed.has(step.step);
               return (
                 <div key={step.step} style={{ boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 12, marginBottom: 10, overflow: "hidden", background: "var(--panel-sunken)" }}>
                   <button
@@ -563,7 +592,7 @@ export default function LabelQCPage() {
                     <Icon name="chevron-down" size={16} style={{ color: "var(--text-muted)", transition: "transform 0.2s ease", transform: open ? "none" : "rotate(-90deg)" }} />
                   </button>
                   {open &&
-                    step.checks.map((c, i) => (
+                    shown.map((c, i) => (
                       <div key={i} style={{ display: "flex", gap: 11, padding: "12px 14px", borderTop: "1px solid var(--border)", alignItems: "flex-start" }}>
                         <Icon name={STATUS_STYLE[c.status].icon} size={18} style={{ color: STATUS_STYLE[c.status].color, marginTop: 1 }} />
                         <div style={{ minWidth: 0, flex: 1 }}>
