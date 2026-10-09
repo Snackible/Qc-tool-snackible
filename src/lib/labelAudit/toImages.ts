@@ -104,6 +104,7 @@ export async function openRenderer(file: File, maxPages = MAX_PDF_PAGES): Promis
       const { canvas, ctx } = whiteCanvas(box.w * scale, box.h * scale);
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(bitmap, box.x, box.y, box.w, box.h, 0, 0, canvas.width, canvas.height);
+      canvas.dataset.scale = String(scale); // canvas pixels per photo pixel, so OCR can tell how small the photo's text was
       return [canvas];
     },
     close: async () => bitmap.close(),

@@ -42,6 +42,7 @@ export function mergeLabels(labels: ExtractedLabel[]): ExtractedLabel {
     pageCount: pageOffset,
     charCount: labels.reduce((n, l) => n + l.charCount, 0),
     source: labels.some((l) => l.source === "ocr") ? "ocr" : "pdf",
+    photoTextPx: labels.reduce<number | undefined>((m, l) => (l.photoTextPx === undefined ? m : m === undefined ? l.photoTextPx : Math.min(m, l.photoTextPx)), undefined),
   };
 }
 

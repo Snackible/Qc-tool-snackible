@@ -122,7 +122,7 @@ function listHas(listNorm: string, target: string, ocr = false): boolean {
 function labelIngredientList(ctx: Ctx): string {
   const head = findHeading(ctx.rows, /^ingredients?\b/);
   if (!head) return "";
-  return collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x, ctx.rows[head.row].y));
+  return collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x, ctx.rows[head.row].y), 30, ctx.ocr ? 7 : 4);
 }
 
 /** Splits a USP on "/", but not inside brackets: "Source of protein (3.85g/70g and 5.50g/100g)" is one claim. */
@@ -345,7 +345,7 @@ function findHeading(rows: Row[], re: RegExp): { row: number; item: number } | n
 }
 
 /** Collects the paragraph that starts at a heading: following rows aligned to the heading's left edge. */
-function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap = 20, xMax = Infinity, maxRows = 30): string {
+function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap = 20, xMax = Infinity, maxRows = 30, alignTol = 4): string {
   const row0 = rows[at.row];
   const head = row0.items[at.item];
   const x0 = head.x;
@@ -363,13 +363,15 @@ function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap 
   const maxGap = Math.max(head.h, 4) * 3.6; // a blank line between two components is about two row pitches
   let prevY = row0.y;
   let inContains = false;
+  let xRef = x0; // follows the paragraph's left edge, which drifts on a tilted photo
 
   for (let r = at.row + 1, used = 1; r < rows.length && used < maxRows; r++, used++) {
     const row = rows[r];
     if (row.page !== row0.page || prevY - row.y > maxGap) break;
-    const cand = row.items.filter((i) => i.x >= x0 - 3 && i.x < xMax);
+    const cand = row.items.filter((i) => i.x >= xRef - alignTol - 1 && i.x < xMax);
     if (!cand.length) continue; // this line only has text from another panel; the gap check ends the paragraph
-    if (Math.abs(cand[0].x - x0) > 4) continue; // nothing in our column on this line (another column interleaved); the gap check ends the paragraph
+    if (Math.abs(cand[0].x - xRef) > alignTol) continue; // nothing in our column on this line (another column interleaved); the gap check ends the paragraph
+    xRef = cand[0].x;
     const group = [cand[0]];
     for (let k = 1; k < cand.length; k++) {
       const prev = group[group.length - 1];
@@ -431,8 +433,11 @@ function topLevelItems(body: string): string[] {
   return items.map((i) => normalize(i.replace(/\([^)]*\)|\[[^\]]*\]/g, " "))).filter(Boolean);
 }
 
-/** OCR reads "a" as "o" ("Sugor", "Fot"), so with OCR words that differ only in a/o are the same word. */
-const aoKey = (s: string) => s.replace(/o/g, "a");
+/**
+ * OCR reads "a" as "o" ("Sugor", "Fot") and "ñ" as "fi"/"ii" ("Jalapefio"), so with OCR words that differ only in those are
+ * the same word.
+ */
+const aoKey = (s: string) => s.replace(/(?<=[a-z])(fi|ii|ri)(?=o)/g, "n").replace(/o/g, "a");
 
 function findTypos(textWords: string[], vocab: Set<string>, ignoreAO = false): { word: string; suggestion: string }[] {
   const vocabKeys = ignoreAO ? new Set(Array.from(vocab).map(aoKey)) : null;
@@ -473,9 +478,28 @@ const ALLERGEN_GROUPS: [string, RegExp][] = [
   ["crustacean", /\b(crustaceans?|shellfish|prawns?)\b/],
 ];
 
-function allergenGroups(text: string): Set<string> {
+const ALLERGEN_WORDS: [string, string[]][] = [
+  ["gluten", ["gluten", "wheat", "barley"]],
+  ["milk", ["milk", "dairy", "whey", "casein", "lactose"]],
+  ["soya", ["soya", "soybean", "soybeans"]],
+  ["peanut", ["peanut", "peanuts", "groundnut", "groundnuts"]],
+  ["tree nuts", ["almond", "almonds", "cashew", "cashews", "walnut", "walnuts", "pistachio", "pistachios", "hazelnut", "hazelnuts"]],
+  ["mustard", ["mustard"]],
+  ["sesame", ["sesame"]],
+  ["crustacean", ["crustacean", "crustaceans", "shellfish"]],
+];
+
+function allergenGroups(text: string, ocr = false): Set<string> {
   const t = text.toLowerCase();
-  return new Set(ALLERGEN_GROUPS.filter(([, re]) => re.test(t)).map(([g]) => g));
+  const groups = new Set(ALLERGEN_GROUPS.filter(([, re]) => re.test(t)).map(([g]) => g));
+  if (ocr) {
+    // OCR misreads a letter ("giuten", "mi1k"): a word one edit from an allergen word (5+ letters) counts
+    for (const w of words(t)) {
+      if (w.length < 4) continue;
+      for (const [g, keys] of ALLERGEN_WORDS) if (keys.some((k) => k.length >= 5 && editDistance(w, k, 1) <= 1)) groups.add(g);
+    }
+  }
+  return groups;
 }
 
 function satisfied(sheetGroup: string, label: Set<string>): boolean {
@@ -501,9 +525,10 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   if (!head) {
     checks.push({ label: "Ingredients list", status: "warn", found: "No 'Ingredients' heading found in the label text" });
   } else {
-    const text = collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x, ctx.rows[head.row].y));
+    const text = collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x, ctx.rows[head.row].y), 30, ctx.ocr ? 7 : 4);
     const { list, statement } = splitList(text);
     const segments = segmentsOf(list, ctx.ocr);
+    const labelComponents = segments.filter((s) => s.heading).length;
     const sheet = splitList(ref.ingredients.replace(/\s+/g, " "));
 
     // match against the sheet: the sheet may cover only part of a combo, so only sheet words missing from the label count
@@ -544,9 +569,14 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       // with OCR, a list of which only part was read (tiny print, a column the OCR skipped) can't show that words are absent
       const readShare = (sheetTokens.length - notPresent.length) / sheetTokens.length;
       const partlyRead = ctx.ocr && readShare < 0.8;
+      // a sheet word missing while the label has a clean word the sheet doesn't ("Vegan" where the sheet says "Vegetable") is a
+      // substitution, so it fails however few words are affected
+      const single = labelComponents <= 1 && segmentsOf(sheet.list).filter((s) => s.heading).length <= 1;
+      const near = (w: string) => sheetTokens.some((t) => t.startsWith(w) || w.startsWith(t) || editDistance(w, t, Math.ceil(w.length * 0.45)) <= Math.ceil(w.length * 0.45));
+      const swapped = single && uniq(words(list)).some((w) => w.length >= 5 && !sheetWordSet.has(w) && !damagedBy.has(w) && !near(w));
       checks.push({
         label: "Ingredients match the sheet",
-        status: ratio > 0.1 && !partlyRead ? "fail" : "warn",
+        status: (ratio > 0.1 || swapped) && !partlyRead ? "fail" : "warn",
         expected: "Every word of the sheet's ingredient list",
         found: `Missing on label: ${missing.slice(0, 10).join(", ")}${missing.length > 10 ? "…" : ""}`,
         note: partlyRead
@@ -647,26 +677,44 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   // allergen declaration
   const sheetGroups = allergenGroups(ref.allergens);
   const aHead = findHeading(ctx.rows, /^allergen/);
-  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x, ctx.rows[aHead.row].y)) : "";
+  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x, ctx.rows[aHead.row].y), 30, ctx.ocr ? 7 : 4) : "";
   if (sheetGroups.size === 0) {
     checks.push({ label: "Allergen declaration", status: "skip", note: "The sheet lists no allergens." });
   } else if (!aText) {
     checks.push({ label: "Allergen declaration", status: "warn", expected: ref.allergens.trim(), found: "No 'Allergen' statement found" });
   } else {
-    const labelGroups = allergenGroups(aText);
+    const labelGroups = allergenGroups(aText, ctx.ocr);
     const missing = Array.from(sheetGroups).filter((g) => !satisfied(g, labelGroups));
     const extra = Array.from(labelGroups).filter((g) => !sheetGroups.has(g) && !(g === "nuts" && (sheetGroups.has("peanut") || sheetGroups.has("tree nuts"))) && !((g === "peanut" || g === "tree nuts") && sheetGroups.has("nuts")));
+    // what the product itself contains (the sheet's text before "made in a facility" / "may contain") must be declared; a
+    // missing cross-contact allergen read by OCR is more likely cut off or unread than absent
+    const primary = allergenGroups(ref.allergens.split(/made in a facility|manufactured in a facility|in a facility|may contain|processed in|processes/i)[0]);
+    const missingPrimary = missing.filter((g) => primary.has(g));
+    const status: CheckStatus = missingPrimary.length || (missing.length && !ctx.ocr) ? "fail" : missing.length || extra.length ? "warn" : "pass";
     checks.push({
       label: "Allergen declaration",
-      status: missing.length ? "fail" : extra.length ? "warn" : "pass",
+      status,
       expected: ref.allergens.trim(),
       found: missing.length ? `Label does not declare: ${missing.join(", ")}` : extra.length ? `Label also declares: ${extra.join(", ")}` : aText,
+      note:
+        missing.length && !missingPrimary.length && ctx.ocr
+          ? "Only the cross-contact part (made in a facility that processes…) is missing; the OCR may not have read all of it. Check the label."
+          : undefined,
     });
   }
   return checks;
 }
 
 // ── Step 7: nutrition ────────────────────────────────────────────────────────
+
+/** OCR swaps look-alike digits (9/5, 6/0, 8/3) or cuts a number short: one wrong digit, or digits that are a run of the other's. */
+function likelyMisread(got: number, expected: number): boolean {
+  const a = fmt(got).replace(".", "");
+  const b = fmt(expected).replace(".", "");
+  if (a.length === b.length) return Array.from(a).filter((ch, k) => ch !== b[k]).length === 1;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  return short.length >= 2 && long.includes(short);
+}
 
 function calcStatus(master: number, found: number, floor: number): CheckStatus {
   const diff = Math.abs(master - found);
@@ -693,7 +741,7 @@ function parseCell(token: string): number | null | undefined {
   const t = token.trim();
   if (/^[-–—]$/.test(t)) return null;
   if (/^(nil|blq|nd|trace)$/i.test(t)) return 0;
-  if (/^(?:nd|blq|bql)\s*[<＜≤]\s*\d+(?:\.\d+)?\s*(?:g|mg|mcg|kcal)?$/i.test(t)) return 0; // "ND<0.03g": not detected
+  if (/^(?:nd|blq|bql)\s*[<＜≤\-–]\s*\d+(?:\.\d+)?\s*(?:g|mg|mcg|kcal)?$/i.test(t)) return 0; // "ND<0.03g" (OCR may read "<" as "-"): not detected
   const m = t.match(/^[<≤]?\s*(\d+(?:\.\d+)?)\s*(?:kcal|kj|g|gm|mg|mcg|%)?$/i);
   return m ? parseFloat(m[1]) : undefined;
 }
@@ -770,22 +818,42 @@ function addGeometricValues(
   const H = items.map((i) => i.h).sort((a, b) => a - b)[Math.floor(items.length / 2)] || 7;
   const numeric = items.filter((i) => i.s.split(/\s+/).every((tok) => cell(tok) !== undefined));
 
-  type Label = { nutrient: (typeof NUTRIENTS)[number]; item: LabelItem; text: string; fuzzy: boolean; weak: boolean };
+  type Label = { nutrient: (typeof NUTRIENTS)[number]; item: LabelItem; first: LabelItem; text: string; fuzzy: boolean; weak: boolean };
   const labels: Label[] = [];
+  const used = new Set<LabelItem>();
+  // the next word to the right on the same line; a tilted photo can put "Trans" and "Fat" on different rows, so this
+  // allows a little height difference instead of relying on rows
+  const gapTo = (a: LabelItem, b: LabelItem) => b.x - (a.x + a.w);
+  const sameLine = (a: LabelItem, b: LabelItem) => b.page === a.page && Math.abs(b.y - a.y) <= H * 0.6;
+  const nextWord = (a: LabelItem): LabelItem | null => {
+    let best: LabelItem | null = null;
+    for (const b of items) {
+      if (b === a || used.has(b) || !sameLine(a, b)) continue;
+      const g = gapTo(a, b);
+      if (g < -1 || g > H * 1.5) continue;
+      if (!best || g < gapTo(a, best)) best = b;
+    }
+    return best;
+  };
+  const wordJustBefore = (a: LabelItem) => items.some((b) => b !== a && sameLine(a, b) && gapTo(b, a) >= -1 && gapTo(b, a) <= H * 1.5);
   for (const row of ctx.rows) {
-    for (let i = 0; i < row.items.length; ) {
-      let hit: Label | null = null;
-      let len = 0;
+    for (const start of row.items) {
+      if (used.has(start)) continue;
+      const chain = [start];
+      while (chain.length < 3) {
+        const nxt = nextWord(chain[chain.length - 1]);
+        if (!nxt || chain.includes(nxt)) break;
+        chain.push(nxt);
+      }
       for (const n of [3, 2, 1]) {
-        if (i + n > row.items.length) continue;
-        const win = row.items.slice(i, i + n);
-        if (win.some((w, k) => k > 0 && w.x - (win[k - 1].x + win[k - 1].w) > H * 1.5)) continue;
+        if (n > chain.length) continue;
+        const win = chain.slice(0, n);
         const text = joinItems(win);
         const norm = words(text).filter((w) => !UNIT_WORDS.has(w)).join(" ");
         if (!norm) continue;
+        const generic = n === 1 && /^(fats?|sugars?)$/.test(norm);
         // a bare "Fat" or "Sugar" right after another word is the end of a longer name we don't track ("Unsaturated Fat")
-        const before = i > 0 ? row.items[i - 1] : null;
-        if (n === 1 && /^(fats?|sugars?)$/.test(norm) && before && win[0].x - (before.x + before.w) <= H * 1.5) continue;
+        if (generic && wordJustBefore(start)) continue;
         let nutrient = NUTRIENTS.find((d) => d.names.includes(norm));
         if (!nutrient) nutrient = NUTRIENTS.find((d) => d.names.some((name) => aoKey(name) === aoKey(norm)));
         let fuzzy = false;
@@ -799,15 +867,11 @@ function addGeometricValues(
           }
         }
         if (nutrient) {
-          hit = { nutrient, item: win[win.length - 1], text, fuzzy, weak: n === 1 && /^(fats?|sugars?)$/.test(norm) };
-          len = n;
+          labels.push({ nutrient, item: win[win.length - 1], first: win[0], text, fuzzy, weak: generic });
+          win.forEach((w) => used.add(w));
           break;
         }
       }
-      if (hit) {
-        labels.push(hit);
-        i += len;
-      } else i++;
     }
   }
   // a bare "Fat" is probably the tail of "Saturated Fat" whose first word the OCR missed: it counts only if the table has no
@@ -817,6 +881,10 @@ function addGeometricValues(
     if (l.weak && labels.some((o) => !o.weak && o.nutrient === l.nutrient && o.item.page === l.item.page)) labels.splice(k, 1);
   }
   if (labels.length < 3) return;
+  // a misspelt name is a finding whether or not its number could be read
+  for (const l of labels) {
+    if (l.fuzzy && !typos.some((t) => t.expected === l.nutrient.label)) typos.push({ found: l.text.replace(/\s*\([^)]*\)\s*/g, "").trim(), expected: l.nutrient.label });
+  }
 
   const result = new Map<string, LabelNutrient>();
   const addValues = (l: Label, c0: LabelItem, slopeAtLabel: number, pool: LabelItem[]) => {
@@ -853,7 +921,19 @@ function addGeometricValues(
     if (pl.length < 3) continue;
     const pool = numeric.filter((c) => c.page === page);
     const base0 = pl.map((l) => l.item.x + l.item.w).sort((a, b) => a - b)[Math.floor(pl.length / 2)];
-    const mid = (c: LabelItem) => c.x + c.w / 2; // cells are centred, so columns line up by their centres
+    // a rotated photo tilts the table's columns: estimate the tilt from the names' left edges (median of pairwise slopes, so
+    // indented names don't matter), and line the numbers up by their centres corrected for it
+    const tiltSlopes: number[] = [];
+    for (let i = 0; i < pl.length; i++) {
+      for (let j = i + 1; j < pl.length; j++) {
+        const dy = pl[j].first.y - pl[i].first.y;
+        if (Math.abs(dy) > H * 2) tiltSlopes.push((pl[j].first.x - pl[i].first.x) / dy);
+      }
+    }
+    tiltSlopes.sort((a, b) => a - b);
+    const tilt = tiltSlopes.length ? Math.max(-0.2, Math.min(0.2, tiltSlopes[Math.floor(tiltSlopes.length / 2)])) : 0;
+    const yRef = pl.reduce((n, l) => n + l.item.y, 0) / pl.length;
+    const mid = (c: LabelItem) => c.x + c.w / 2 - tilt * (c.y - yRef); // cells are centred, so columns line up by their centres
     const right = pool.filter((c) => c.x >= base0 - 2 && c.x - base0 <= H * 16).sort((a, b) => mid(a) - mid(b));
 
     // the first value column: the leftmost dense stack of numbers (by their centres) with about as many numbers as there are
@@ -868,7 +948,8 @@ function addGeometricValues(
       center = members.reduce((n, c) => n + mid(c), 0) / members.length;
     }
     const col = right.filter((c) => Math.abs(mid(c) - center) <= H * 1.2);
-    const xcol = col.reduce((n, c) => n + c.x, 0) / col.length;
+    const xcolRef = col.reduce((n, c) => n + c.x - tilt * (c.y - yRef), 0) / col.length;
+    const colX = (y: number) => xcolRef + tilt * (y - yRef); // where the column is at a given height
 
     // what each number in the column could be (OCR drops decimal points), to compare with the sheet
     const valsOf = new Map<LabelItem, number[]>();
@@ -906,7 +987,7 @@ function addGeometricValues(
         const pairs = new Map<LabelItem, { l: Label; d: number }>();
         for (const l of pl) {
           const base = l.item.x + l.item.w;
-          const expY = l.item.y + (a + b * (l.item.y - yMid)) * (xcol - base);
+          const expY = l.item.y + (a + b * (l.item.y - yMid)) * (colX(l.item.y) - base);
           let near: LabelItem | null = null;
           let nd = Infinity;
           for (const c of col) {
@@ -1029,15 +1110,14 @@ function checkNutrition(ctx: Ctx, ref: AuditReference, notes: string[]): AuditCh
       });
       continue;
     }
-    const status = calcStatus(expected, got, n.floor);
+    let status = calcStatus(expected, got, n.floor);
     const dev = expected !== 0 ? ((got - expected) / Math.abs(expected)) * 100 : null;
-    checks.push({
-      label: n.label,
-      status,
-      expected: `${fmt(expected)}${n.unit}`,
-      found: `${fmt(got)}${n.unit}`,
-      note: status === "pass" || dev === null ? undefined : `${dev >= 0 ? "+" : ""}${dev.toFixed(1)}% vs sheet (closest value in that row of the label)`,
-    });
+    let note = status === "pass" || dev === null ? undefined : `${dev >= 0 ? "+" : ""}${dev.toFixed(1)}% vs sheet (closest value in that row of the label)`;
+    if (status === "fail" && ctx.ocr && likelyMisread(got, expected)) {
+      status = "warn";
+      note = "This differs from the sheet by a single digit (or is a cut-off read), which is usually an OCR misread. Check the label.";
+    }
+    checks.push({ label: n.label, status, expected: `${fmt(expected)}${n.unit}`, found: `${fmt(got)}${n.unit}`, note });
   }
   checks.push({
     label: "Nutrient names spelled correctly",
@@ -1097,6 +1177,8 @@ function checkMrp(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const unitPrices = uniq([
     ...findAll(/(\d+(?:\.\d+)?)\s*\/?\s*-?\s*\)?\s*per\s*(?:gm|gms|g|gram|grams)\b/i, ctx.flat),
     ...findAll(/per\s*(?:gm|g|gram)s?\s*[:\-]?\s*(?:rs\.?|₹)?\s*(\d+(?:\.\d+)?)/i, ctx.flat),
+    // "USP ₹ 0.92/-" (unit sale price); OCR may read the rupee sign as "R" or drop it
+    ...findAll(/\b(?:usp|unit\s*sale\s*price)\b[^\d]{0,8}?(\d+\.\d+)/i, ctx.flat),
   ].map((m) => parseFloat(m[1])));
 
   const checks: AuditCheck[] = [];
@@ -1190,7 +1272,7 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     const missing = names.filter((n) => !viewsContain(ctx.views, normalize(n)) && !near(n));
     checks.push({
       label: "Manufacturer name",
-      status: missing.length ? "fail" : "pass",
+      status: missing.length ? (ctx.ocr ? "warn" : "fail") : "pass", // with OCR, not finding a name is not proof it's absent
       expected: names.join("; "),
       found: missing.length ? `Not found on label: ${missing.join("; ")}` : undefined,
     });
@@ -1212,7 +1294,8 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     const misread = pinHits.filter((p) => p.hit && !p.hit.exact);
     checks.push({
       label: "Pincode matches the sheet",
-      status: missing.length ? "fail" : misread.length ? "warn" : "pass",
+      // with OCR only a clearly different printed pincode is a Fail; not finding one is Review
+      status: missing.length ? (ctx.ocr && !printedPins.length ? "warn" : "fail") : misread.length ? "warn" : "pass",
       expected: sheetPins.join(", "),
       // say what the label does show, not just what is missing
       found: missing.length ? (printedPins.length ? printedPins.join(", ") : "No pincode found on the label") : misread.length ? `Read as ${misread.map((p) => p.hit!.digits).join(", ")}` : undefined,
@@ -1257,9 +1340,11 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const sheetLic = uniq(findAll(/\b\d{14}\b/, ref.manufacturer.replace(/\s+/g, " ")).map((m) => m[0]));
   if (sheetLic.length) {
     const missing = sheetLic.filter((l) => !digits.includes(l));
+    // OCR misreads a digit or two of a long number: a printed number that differs from the sheet's in at most 2 places
+    const licNearMiss = printedLic.some((p) => sheetLic.some((l) => p.length === l.length && Array.from(p).filter((ch, k) => ch !== l[k]).length <= 2));
     checks.push({
       label: "FSSAI licence number matches the sheet",
-      status: missing.length ? "fail" : "pass",
+      status: missing.length ? (ctx.ocr && (!printedLic.length || licNearMiss) ? "warn" : "fail") : "pass",
       expected: sheetLic.join(", "),
       found: missing.length ? (printedLic.length ? printedLic.join(", ") : "No licence number found on the label") : undefined,
       note: missing.length ? (printedLic.length ? "The licence number on the label differs from the sheet's." : "The panel with the licence number may not be on the upload, or the OCR couldn't read it.") : undefined,

@@ -138,11 +138,18 @@ export function wordsToItems(words: OcrWord[], canvasHeight: number, page: numbe
 export async function ocrCanvases(canvases: HTMLCanvasElement[], onProgress?: (p: OcrProgress) => void): Promise<ExtractedLabel> {
   try {
     const items: LabelItem[] = [];
+    let photoTextPx: number | undefined;
     for (let page = 0; page < canvases.length; page++) {
       const words = await paddleWords(canvases[page], (p) => onProgress?.({ stage: p.stage, pct: ((page + p.pct / 100) / canvases.length) * 100 }));
       items.push(...wordsToItems(words, canvases[page].height, page + 1));
+      const scale = Number(canvases[page].dataset.scale);
+      if (scale > 0 && words.length >= 10) {
+        const hs = words.map((w) => w.bbox.y1 - w.bbox.y0).sort((a, b) => a - b);
+        const px = hs[Math.floor(hs.length / 2)] / scale;
+        photoTextPx = photoTextPx === undefined ? px : Math.min(photoTextPx, px);
+      }
     }
-    return { items, pageCount: canvases.length, charCount: items.reduce((n, i) => n + i.s.length, 0), source: "ocr" };
+    return { items, pageCount: canvases.length, charCount: items.reduce((n, i) => n + i.s.length, 0), source: "ocr", photoTextPx };
   } catch {
     return tesseractCanvases(canvases, onProgress);
   }

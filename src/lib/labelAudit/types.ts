@@ -36,6 +36,8 @@ export type ExtractedLabel = {
   charCount: number;
   /** where the text came from: the PDF's own text layer, or OCR of the rendered image */
   source: "pdf" | "ocr";
+  /** for OCR of a photo: the median height of its text in the photo's own pixels (too small means likely misreads) */
+  photoTextPx?: number;
 };
 
 export const STEP_NAMES: Record<number, string> = {

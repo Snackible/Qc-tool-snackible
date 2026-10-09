@@ -426,7 +426,11 @@ export default function LabelQCPage() {
                 <span>
                   {extract.state === "reading" && extract.detail}
                   {extract.state === "ready" && (extract.label.source === "ocr"
-                    ? `Read ${extract.label.charCount.toLocaleString()} characters with OCR. It can misread small or tilted text, so spelling findings are marked Review.`
+                    ? `Read ${extract.label.charCount.toLocaleString()} characters with OCR. It can misread small or tilted text, so spelling findings are marked Review.${
+                        extract.label.photoTextPx !== undefined && extract.label.photoTextPx < 10
+                          ? ` The text in this photo is very small (about ${Math.round(extract.label.photoTextPx)} px tall), so expect misreads: use a closer or higher-resolution photo, or the print PDF.`
+                          : ""
+                      }`
                     : `Text found in the PDF (${extract.label.charCount.toLocaleString()} characters). The SOP audit can run without AI.`)}
                   {extract.state === "no-text" && "Couldn't read any text from this file, even with OCR. Use AI review."}
                   {extract.state === "error" && `Couldn't read the label text: ${extract.message}. Try AI review.`}

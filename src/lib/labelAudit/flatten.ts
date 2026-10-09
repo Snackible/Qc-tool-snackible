@@ -133,13 +133,19 @@ function flattenPage(items: LabelItem[]): LabelItem[] {
   };
 
   const moved = items.map((it) => (it.rotated ? it : { ...it, y: it.y - shift(it.x + it.w / 2, it.y) }));
+  // a photo that is simply rotated is flattened exactly by the page-wide slope; the local field is for bends and keystone
+  const rotatedOnly = items.map((it) => (it.rotated ? it : { ...it, y: it.y - globalSlope * (it.x + it.w / 2 - xc) }));
 
-  // keep the flattening only if the words really do fall into sharper rows
+  // keep whichever flattening makes the words fall into the sharpest rows, and only if clearly sharper than none
+  const sharp = (list: LabelItem[]) =>
+    sharpness(
+      list.filter((i) => !i.rotated).map((i) => ({ x: i.x + i.w / 2, y: i.y, w: i.w })),
+      binH,
+      0
+    );
   const before = sharpness(centres, binH, 0);
-  const after = sharpness(
-    moved.filter((i) => !i.rotated).map((i) => ({ x: i.x + i.w / 2, y: i.y, w: i.w })),
-    binH,
-    0
-  );
-  return after >= before * MIN_GAIN ? moved : items;
+  const local = sharp(moved);
+  const whole = globalSlope ? sharp(rotatedOnly) : 0;
+  const [best, score] = whole > local ? [rotatedOnly, whole] : [moved, local];
+  return score >= before * MIN_GAIN ? best : items;
 }
