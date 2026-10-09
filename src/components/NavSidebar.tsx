@@ -67,7 +67,7 @@ export default function NavSidebar() {
         <NavLinks />
         <div className="nav-foot">
           <ThemeSwitch />
-          <span>v1.0 &middot; Internal use only</span>
+          <span>{process.env.NEXT_PUBLIC_APP_VERSION}</span>
         </div>
       </aside>
 
@@ -92,7 +92,7 @@ export default function NavSidebar() {
         <NavLinks />
         <div className="nav-foot">
           <ThemeSwitch />
-          <span>v1.0 &middot; Internal use only</span>
+          <span>{process.env.NEXT_PUBLIC_APP_VERSION}</span>
         </div>
       </aside>
     </>
