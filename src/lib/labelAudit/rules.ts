@@ -508,18 +508,48 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     // OCR garbles words ("oatmeal" -> "oaneal"), so with OCR a word within a couple of letters counts as present
     const labelList = Array.from(labelTokens);
     const nearPresent = (w: string) => ctx.ocr && w.length >= 5 && labelList.some((l) => editDistance(w, l, w.length >= 7 ? 2 : 1) <= (w.length >= 7 ? 2 : 1));
-    const missing = sheetTokens.filter((w) => !labelTokens.has(w) && !nearPresent(w));
+    const notPresent = sheetTokens.filter((w) => !labelTokens.has(w) && !nearPresent(w));
+    // OCR also leaves damaged fragments of words ("min" for "mint", "suar" for "sugar", "foz" for "soy"): a missing word with
+    // such a counterpart on the label (a word the sheet doesn't have) was read badly, which is not the same as being absent
+    const sheetWordSet = new Set(sheetTokens);
+    const unknownOnLabel = labelList.filter((l) => !sheetWordSet.has(l));
+    const damagedBy = new Set<string>();
+    const garbled = (w: string) => {
+      if (!ctx.ocr) return false;
+      const max = w.length <= 3 ? 1 : w.length <= 7 ? 2 : Math.ceil(w.length * 0.4);
+      const hit = unknownOnLabel.find((l) => l.length >= 2 && ((l.length >= 3 && w.startsWith(l)) || editDistance(w, l, max) <= max));
+      if (hit) damagedBy.add(hit);
+      return !!hit;
+    };
+    const unclear = notPresent.filter(garbled);
+    const missing = notPresent.filter((w) => !unclear.includes(w));
     if (!ref.ingredients.trim()) {
       checks.push({ label: "Ingredients match the sheet", status: "skip", note: "The sheet has no ingredients for this product." });
-    } else if (missing.length === 0) {
+    } else if (missing.length === 0 && unclear.length === 0) {
       checks.push({ label: "Ingredients match the sheet", status: "pass", found: "All sheet ingredients are on the label" });
-    } else {
-      const ratio = missing.length / sheetTokens.length;
+    } else if (missing.length === 0) {
       checks.push({
         label: "Ingredients match the sheet",
-        status: ratio > 0.1 ? "fail" : "warn",
+        status: "warn",
+        expected: "Every word of the sheet's ingredient list",
+        found: `Read badly (OCR): ${unclear.slice(0, 10).join(", ")}${unclear.length > 10 ? "…" : ""}`,
+        note: "These words are on the label but the OCR garbled them, so they can't be confirmed. Check them on the label.",
+      });
+    } else {
+      const ratio = missing.length / sheetTokens.length;
+      // with OCR, a list of which only part was read (tiny print, a column the OCR skipped) can't show that words are absent
+      const readShare = (sheetTokens.length - notPresent.length) / sheetTokens.length;
+      const partlyRead = ctx.ocr && readShare < 0.8;
+      checks.push({
+        label: "Ingredients match the sheet",
+        status: ratio > 0.1 && !partlyRead ? "fail" : "warn",
         expected: "Every word of the sheet's ingredient list",
         found: `Missing on label: ${missing.slice(0, 10).join(", ")}${missing.length > 10 ? "…" : ""}`,
+        note: partlyRead
+          ? "Only part of the list could be read by the OCR, so these may be unread rather than missing. Check the label or use AI review."
+          : unclear.length
+            ? `Also read badly by the OCR and not confirmed: ${unclear.slice(0, 10).join(", ")}${unclear.length > 10 ? "…" : ""}.`
+            : undefined,
       });
     }
 
@@ -527,7 +557,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     const labelComponentCount = segments.filter((s) => s.heading).length;
     if (ref.ingredients.trim() && labelComponentCount <= 1 && sheetSegments.filter((s) => s.heading).length <= 1) {
       const sheetSet = new Set(sheetTokens);
-      const extra = uniq(words(list)).filter((w) => w.length > 1 && !sheetSet.has(w));
+      const extra = uniq(words(list)).filter((w) => w.length > 1 && !sheetSet.has(w) && !damagedBy.has(w)); // (damaged fragments are reported above)
       if (extra.length) {
         checks.push({
           label: "No extra ingredients on the label",
