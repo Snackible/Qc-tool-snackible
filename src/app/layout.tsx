@@ -3,7 +3,7 @@ import "./globals.css";
 import NavSidebar from "../components/NavSidebar";
 
 export const metadata: Metadata = {
-  title: "Snackible Nutrition Platform",
+  title: "Snackible QC",
   description: "Internal nutrition compliance, packaging QC & market intelligence",
 };
 
