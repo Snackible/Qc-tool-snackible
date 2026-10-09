@@ -200,7 +200,7 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       if (ref.ingredients.trim() && !inSheet) {
         checks.push({ label: `Claim: ${claim}`, status: "fail", expected: claim, found: "Contradicted by the sheet", note: `The sheet lists this as a claim, but its ingredient list has no ${madeWith}.` });
       } else if (inLabel === false) {
-        checks.push({ label: `Claim: ${claim}`, status: "fail", expected: claim, found: `No ${madeWith} in the label's ingredients`, note: "The claim says the product is made with this, but the ingredient list printed on the label doesn't include it." });
+        checks.push({ label: `Claim: ${claim}`, status: ctx.ocr ? "warn" : "fail", expected: claim, found: `No ${madeWith} in the label's ingredients`, note: "The claim says the product is made with this, but the ingredient list printed on the label doesn't include it." });
       } else if (!printed) {
         checks.push({
           label: `Claim: ${claim}`,
@@ -256,7 +256,8 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   // panel is clearly there.
   const isClaim = (c: AuditCheck) => c.label.startsWith("Claim: ");
   const printedCount = checks.filter((c) => isClaim(c) && c.status === "pass").length;
-  const claimsPanelPresent = claims.length === 0 || printedCount >= Math.max(1, Math.ceil(claims.length * 0.4));
+  // a photo is usually one panel, so it has to print most of the claims before the rest count as missing; a PDF is normally the whole label
+  const claimsPanelPresent = claims.length === 0 || printedCount >= Math.max(1, Math.ceil(claims.length * (ctx.ocr ? 0.75 : 0.4)));
   if (!claimsPanelPresent) {
     const unprinted = (c: AuditCheck) => isClaim(c) && c.status === "warn" && (c.found === "Not printed" || c.found === "Missing");
     if (checks.some(unprinted)) {
@@ -264,7 +265,7 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       checks.unshift({
         label: "USP claims",
         status: "skip",
-        note: "None of the sheet's claims are on the uploaded label, so the panel they sit on (usually the front) wasn't provided. Upload it to check them.",
+        note: "Most of the sheet's claims aren't on the uploaded label, so the panel they sit on (usually the front) probably wasn't provided. Upload it to check them. Claims that are printed are still checked below.",
       });
     }
   }
@@ -426,13 +427,18 @@ function topLevelItems(body: string): string[] {
   return items.map((i) => normalize(i.replace(/\([^)]*\)|\[[^\]]*\]/g, " "))).filter(Boolean);
 }
 
-function findTypos(textWords: string[], vocab: Set<string>): { word: string; suggestion: string }[] {
+/** OCR reads "a" as "o" ("Sugor", "Fot"), so with OCR words that differ only in a/o are the same word. */
+const aoKey = (s: string) => s.replace(/o/g, "a");
+
+function findTypos(textWords: string[], vocab: Set<string>, ignoreAO = false): { word: string; suggestion: string }[] {
+  const vocabKeys = ignoreAO ? new Set(Array.from(vocab).map(aoKey)) : null;
   const seen = new Set<string>();
   const out: { word: string; suggestion: string }[] = [];
   for (const w of textWords) {
     if (w.length < 6 || !/^[a-z]+$/.test(w) || seen.has(w)) continue;
     seen.add(w);
     if (vocab.has(w) || (w.endsWith("s") && vocab.has(w.slice(0, -1))) || vocab.has(w + "s")) continue;
+    if (vocabKeys && (vocabKeys.has(aoKey(w)) || (w.endsWith("s") && vocabKeys.has(aoKey(w.slice(0, -1)))) || vocabKeys.has(aoKey(w + "s")))) continue;
     const max = w.length >= 9 ? 2 : 1;
     let best: string | null = null;
     let bestD = max + 1;
@@ -444,7 +450,7 @@ function findTypos(textWords: string[], vocab: Set<string>): { word: string; sug
         best = v;
       }
     });
-    if (best) out.push({ word: w, suggestion: best });
+    if (best && !(ignoreAO && aoKey(best) === aoKey(w))) out.push({ word: w, suggestion: best });
   }
   return out;
 }
@@ -585,7 +591,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     });
 
     // spelling against the words used across the sheet
-    const typos = findTypos(words(text), ref.vocabulary);
+    const typos = findTypos(words(text), ref.vocabulary, ctx.ocr);
     checks.push({
       label: "Ingredient spelling",
       status: typos.length ? (ctx.ocr ? "warn" : "fail") : "pass",
@@ -670,6 +676,7 @@ function parseNutritionRows(ctx: Ctx, expected?: Map<string, number[]>) {
     const labelNorm = words(rowLabel).filter((w) => !UNIT_WORDS.has(w)).join(" ");
     if (!labelNorm) continue;
     let nutrient = NUTRIENTS.find((n) => n.names.includes(labelNorm));
+    if (!nutrient && ctx.ocr) nutrient = NUTRIENTS.find((n) => n.names.some((name) => aoKey(name) === aoKey(labelNorm)));
     if (!nutrient) {
       for (const n of NUTRIENTS) {
         const hit = n.names.find((name) => name.length >= 6 && editDistance(labelNorm, name, name.length >= 9 ? 2 : 1) <= (name.length >= 9 ? 2 : 1));
@@ -739,6 +746,7 @@ function addGeometricValues(
         const before = i > 0 ? row.items[i - 1] : null;
         if (n === 1 && /^(fats?|sugars?)$/.test(norm) && before && win[0].x - (before.x + before.w) <= H * 1.5) continue;
         let nutrient = NUTRIENTS.find((d) => d.names.includes(norm));
+        if (!nutrient) nutrient = NUTRIENTS.find((d) => d.names.some((name) => aoKey(name) === aoKey(norm)));
         let fuzzy = false;
         if (!nutrient) {
           for (const d of NUTRIENTS) {
@@ -1152,6 +1160,12 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   // sheet pincodes are searched for directly (allowing a space or hyphen between digits, and for OCR one misread digit)
   const sheetPins = uniq(findAll(/\b[1-9]\d{5}\b/, ref.manufacturer).map((m) => m[0]));
   const pinHits = sheetPins.map((pin) => ({ pin, hit: findPincode(ctx.flat, pin, ctx.ocr) }));
+  // six-digit numbers printed on the label that aren't part of a longer run (a barcode)
+  const printedPins = uniq(
+    findAll(/\b[1-9]\d{5}\b/, ctx.flat)
+      .filter((m) => !/\d\s?$/.test(ctx.flat.slice(Math.max(0, m.index - 2), m.index)) && !/^\s?\d/.test(ctx.flat.slice(m.index + 6, m.index + 8)))
+      .map((m) => m[0])
+  ).slice(0, 3);
   if (sheetPins.length) {
     const missing = pinHits.filter((p) => !p.hit);
     const misread = pinHits.filter((p) => p.hit && !p.hit.exact);
@@ -1159,8 +1173,9 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       label: "Pincode matches the sheet",
       status: missing.length ? "fail" : misread.length ? "warn" : "pass",
       expected: sheetPins.join(", "),
-      found: missing.length ? `Not on label: ${missing.map((p) => p.pin).join(", ")}` : misread.length ? `Read as ${misread.map((p) => p.hit!.digits).join(", ")}` : undefined,
-      note: misread.length && !missing.length ? "One digit differs, which is most likely an OCR misread. Check the label." : undefined,
+      // say what the label does show, not just what is missing
+      found: missing.length ? (printedPins.length ? printedPins.join(", ") : "No pincode found on the label") : misread.length ? `Read as ${misread.map((p) => p.hit!.digits).join(", ")}` : undefined,
+      note: missing.length ? (printedPins.length ? "The pincode on the label differs from the sheet's." : "The address with the pincode may not be on the uploaded panel, or the OCR couldn't read it.") : misread.length ? "One digit differs, which is most likely an OCR misread. Check the label." : undefined,
     });
     const found = pinHits.filter((p) => p.hit);
     if (found.length === 0) {
@@ -1197,6 +1212,7 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   }
 
   const digits = ctx.flat.replace(/\s+/g, "");
+  const printedLic = uniq(findAll(/\b\d{14}\b/, ctx.flat).map((m) => m[0])).slice(0, 3);
   const sheetLic = uniq(findAll(/\b\d{14}\b/, ref.manufacturer.replace(/\s+/g, " ")).map((m) => m[0]));
   if (sheetLic.length) {
     const missing = sheetLic.filter((l) => !digits.includes(l));
@@ -1204,7 +1220,8 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       label: "FSSAI licence number matches the sheet",
       status: missing.length ? "fail" : "pass",
       expected: sheetLic.join(", "),
-      found: missing.length ? `Not on label: ${missing.join(", ")}` : undefined,
+      found: missing.length ? (printedLic.length ? printedLic.join(", ") : "No licence number found on the label") : undefined,
+      note: missing.length ? (printedLic.length ? "The licence number on the label differs from the sheet's." : "The panel with the licence number may not be on the upload, or the OCR couldn't read it.") : undefined,
     });
   }
   const licHits = findAll(/lic\.?\s*no\.?\s*[:\-]?\s*(\d[\d\s]*\d)/i, ctx.flat);
