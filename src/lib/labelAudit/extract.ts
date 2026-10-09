@@ -25,6 +25,26 @@ export function summarize(items: LabelItem[], pageCount: number): ExtractedLabel
   return { items, pageCount, charCount: items.reduce((n, i) => n + i.s.trim().length, 0), source: "pdf" };
 }
 
+/**
+ * Combines several labels (e.g. the front and back of a pack, uploaded separately) into one. Pages are renumbered so
+ * each file's rows and columns stay separate from the others' — the rules engine groups both by page — while a
+ * phrase search (product name, a USP claim) still looks across every file, since it reads all pages' text together.
+ */
+export function mergeLabels(labels: ExtractedLabel[]): ExtractedLabel {
+  const items: LabelItem[] = [];
+  let pageOffset = 0;
+  for (const label of labels) {
+    for (const it of label.items) items.push({ ...it, page: it.page + pageOffset });
+    pageOffset += label.pageCount;
+  }
+  return {
+    items,
+    pageCount: pageOffset,
+    charCount: labels.reduce((n, l) => n + l.charCount, 0),
+    source: labels.some((l) => l.source === "ocr") ? "ocr" : "pdf",
+  };
+}
+
 export async function loadPdfjs() {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;

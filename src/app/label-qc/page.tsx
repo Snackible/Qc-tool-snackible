@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Product } from "../../lib/types";
-import { extractPdfText } from "../../lib/labelAudit/extract";
-import { fileToJpegs, openRenderer } from "../../lib/labelAudit/toImages";
+import { extractPdfText, mergeLabels } from "../../lib/labelAudit/extract";
+import { multiFileToJpegs, openRenderer } from "../../lib/labelAudit/toImages";
 import { ocrCanvases } from "../../lib/labelAudit/ocr";
 import { describeNutrition } from "../../lib/labelAudit/nutrients";
 import { PackOption, buildReference, buildVocabulary, packOptionsFor } from "../../lib/labelAudit/reference";
@@ -24,11 +24,12 @@ const STATUS_STYLE: Record<CheckStatus, { color: string; bg: string; label: stri
 const OCR_SIDE = 3200;
 
 type ExtractState =
-  | { state: "idle" }
   | { state: "reading"; detail: string }
   | { state: "ready"; label: ExtractedLabel }
   | { state: "no-text" }
   | { state: "error"; message: string };
+
+type FileEntry = { id: number; file: File; extract: ExtractState; showPreview: boolean };
 
 const cardStyle: React.CSSProperties = { padding: 18, marginBottom: 16 };
 const cardTitle: React.CSSProperties = {
@@ -66,11 +67,9 @@ export default function LabelQCPage() {
   const [expectedMrp, setExpectedMrp] = useState("");
   const [version, setVersion] = useState("");
 
-  const [file, setFile] = useState<File | null>(null);
-  const [extract, setExtract] = useState<ExtractState>({ state: "idle" });
-  const [showPreview, setShowPreview] = useState(false);
+  const [entries, setEntries] = useState<FileEntry[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const extractRun = useRef(0);
+  const nextEntryId = useRef(0);
 
   const [running, setRunning] = useState<"rules" | "ai" | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -135,24 +134,24 @@ export default function LabelQCPage() {
     clearReport();
   };
 
-  const handleFile = async (f: File) => {
-    const id = ++extractRun.current;
-    setFile(f);
-    setShowPreview(false);
-    clearReport();
+  // Each entry extracts independently; `updateEntry` is a no-op once an entry has been removed, so there is nothing
+  // to cancel when the user removes a file mid-read.
+  const updateEntry = (id: number, extract: ExtractState) =>
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, extract } : e)));
+
+  const extractInto = async (id: number, f: File) => {
     const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
     try {
       if (isPdf) {
-        setExtract({ state: "reading", detail: "Reading the label text…" });
+        updateEntry(id, { state: "reading", detail: "Reading the label text…" });
         const pdfLabel = await extractPdfText(f);
-        if (id !== extractRun.current) return;
         if (labelHasText(pdfLabel)) {
-          setExtract({ state: "ready", label: pdfLabel });
+          updateEntry(id, { state: "ready", label: pdfLabel });
           return;
         }
       }
       // no text layer (a photo, or a PDF with outlined text): read the pixels with OCR
-      setExtract({ state: "reading", detail: "Starting OCR…" });
+      updateEntry(id, { state: "reading", detail: "Starting OCR…" });
       const renderer = await openRenderer(f);
       let canvases: HTMLCanvasElement[];
       try {
@@ -161,30 +160,53 @@ export default function LabelQCPage() {
         await renderer.close();
       }
       const ocrLabel = await ocrCanvases(canvases, (p) => {
-        if (id !== extractRun.current) return;
-        setExtract({ state: "reading", detail: `${p.stage === "loading" ? "Loading the OCR engine" : "Reading text from the image"}… ${Math.round(p.pct)}%` });
+        updateEntry(id, { state: "reading", detail: `${p.stage === "loading" ? "Loading the OCR engine" : "Reading text from the image"}… ${Math.round(p.pct)}%` });
       });
-      if (id !== extractRun.current) return;
-      setExtract(labelHasText(ocrLabel) ? { state: "ready", label: ocrLabel } : { state: "no-text" });
+      updateEntry(id, labelHasText(ocrLabel) ? { state: "ready", label: ocrLabel } : { state: "no-text" });
     } catch (e) {
-      if (id !== extractRun.current) return;
-      setExtract({ state: "error", message: e instanceof Error ? e.message : String(e) });
+      updateEntry(id, { state: "error", message: e instanceof Error ? e.message : String(e) });
     }
   };
 
-  const clearFile = () => {
-    extractRun.current++;
-    setFile(null);
-    setExtract({ state: "idle" });
-    setShowPreview(false);
+  const addFiles = (list: FileList | File[]) => {
+    const files = Array.from(list);
+    if (!files.length) return;
+    clearReport();
+    const newEntries: FileEntry[] = files.map((file) => ({
+      id: ++nextEntryId.current,
+      file,
+      extract: { state: "reading", detail: "Reading the label text…" },
+      showPreview: false,
+    }));
+    setEntries((prev) => [...prev, ...newEntries]);
+    newEntries.forEach((entry) => extractInto(entry.id, entry.file));
+  };
+
+  const removeEntry = (id: number) => {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    clearReport();
+  };
+
+  const clearFiles = () => {
+    setEntries([]);
     clearReport();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const togglePreview = (id: number) =>
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, showPreview: !e.showPreview } : e)));
 
   const mrpNumber = (() => {
     const n = parseFloat(expectedMrp);
     return n > 0 ? n : null;
   })();
+
+  const allReady = entries.length > 0 && entries.every((e) => e.extract.state === "ready");
+  const mergedLabel = useMemo(
+    () => (allReady ? mergeLabels(entries.map((e) => (e.extract as { state: "ready"; label: ExtractedLabel }).label)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, allReady]
+  );
 
   const startReport = (r: AuditReport) => {
     setReport(r);
@@ -192,11 +214,11 @@ export default function LabelQCPage() {
   };
 
   const runRules = () => {
-    if (!selected || extract.state !== "ready") return;
+    if (!selected || !mergedLabel) return;
     setRunning("rules");
     setRunError(null);
     try {
-      startReport(runRulesAudit(extract.label, buildReference(selected, packGrams, mrpNumber, vocabulary)));
+      startReport(runRulesAudit(mergedLabel, buildReference(selected, packGrams, mrpNumber, vocabulary)));
     } catch (e) {
       setRunError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -205,11 +227,11 @@ export default function LabelQCPage() {
   };
 
   const runAi = async () => {
-    if (!selected || !file) return;
+    if (!selected || entries.length === 0) return;
     setRunning("ai");
     setRunError(null);
     try {
-      const images = await fileToJpegs(file);
+      const images = await multiFileToJpegs(entries.map((e) => e.file));
       const form = new FormData();
       images.forEach((blob, i) => form.append("images", blob, `label-${i + 1}.jpg`));
       form.append(
@@ -255,14 +277,14 @@ export default function LabelQCPage() {
     ? report.steps.flatMap((s) => s.checks).reduce<Record<CheckStatus, number>>((acc, c) => ({ ...acc, [c.status]: acc[c.status] + 1 }), { pass: 0, fail: 0, warn: 0, skip: 0 })
     : null;
 
-  const canRules = !!selected && extract.state === "ready" && running === null;
-  const canAi = !!selected && !!file && extract.state !== "reading" && running === null;
+  const canRules = !!selected && !!mergedLabel && running === null;
+  const canAi = !!selected && entries.length > 0 && entries.every((e) => e.extract.state !== "reading") && running === null;
 
   return (
     <div style={{ padding: "var(--page-pad)", paddingBottom: 56, maxWidth: 820, margin: "0 auto" }}>
       <h1 className="page-title">Label QC</h1>
       <p className="page-sub" style={{ marginBottom: 26 }}>
-        Pick the product and pack size, upload the label, and check it against the sheet, step by step.
+        Pick the product and pack size, upload the label (front and back, if the claims are split across them), and check it against the sheet, step by step.
       </p>
 
       {loadError && (
@@ -351,10 +373,18 @@ export default function LabelQCPage() {
         </div>
       )}
 
-      {/* Label file */}
+      {/* Label files */}
       <div className="surface" style={cardStyle}>
-        <h2 style={cardTitle}>Label file</h2>
-        {!file ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: entries.length ? 12 : 12 }}>
+          <h2 style={{ ...cardTitle, margin: 0 }}>Label files</h2>
+          {entries.length > 0 && (
+            <button onClick={clearFiles} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 13 }}>
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {entries.length === 0 && (
           <div
             className="dropzone"
             role="button"
@@ -362,53 +392,74 @@ export default function LabelQCPage() {
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
             style={{ border: "1.5px dashed var(--border-strong)", borderRadius: 12, padding: "32px 16px", textAlign: "center", cursor: "pointer", background: "var(--panel-sunken)", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
           >
             <div style={{ width: 46, height: 46, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(6,170,144,0.14)", color: "var(--accent-teal-bright)" }}>
               <Icon name="upload" size={22} />
             </div>
             <div style={{ fontWeight: 600, fontSize: 15 }}>Click or drop the label here</div>
-            <div style={{ color: "var(--text-muted)", fontSize: 13 }}>PDF or image. Text is read automatically (with OCR for images), so the SOP audit runs without AI.</div>
-          </div>
-        ) : (
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <Icon name={file.type.startsWith("image/") ? "image" : "file"} size={18} style={{ color: "var(--accent-teal-bright)" }} />
-              <span style={{ fontSize: 14, fontWeight: 600, overflowWrap: "anywhere", flex: "1 1 170px", minWidth: 0 }}>{file.name}</span>
-              <span className="mono" style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{formatSize(file.size)}</span>
-              <button onClick={() => setShowPreview((v) => !v)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 13 }}>
-                {showPreview ? "Hide label" : "Show label"}
-              </button>
-              <button onClick={clearFile} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 13 }}>
-                Replace
-              </button>
-            </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 7, alignItems: "flex-start", fontSize: 13, color: extract.state === "ready" ? "var(--accent-teal-bright)" : "var(--text-muted)" }}>
-              {extract.state === "reading" && <span className="spin" style={{ width: 14, height: 14, marginTop: 2, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)", flexShrink: 0 }} />}
-              {extract.state === "ready" && <Icon name="check-circle" size={16} style={{ marginTop: 1 }} />}
-              <span>
-                {extract.state === "reading" && extract.detail}
-                {extract.state === "ready" && (extract.label.source === "ocr"
-                  ? `Read ${extract.label.charCount.toLocaleString()} characters with OCR. It can misread small or tilted text, so spelling findings are marked Review.`
-                  : `Text found in the PDF (${extract.label.charCount.toLocaleString()} characters). The SOP audit can run without AI.`)}
-                {extract.state === "no-text" && "Couldn't read any text from this file, even with OCR. Use AI review."}
-                {extract.state === "error" && `Couldn't read the label text: ${extract.message}. Try AI review.`}
-              </span>
-            </div>
-            {showPreview && (
-              <div style={{ marginTop: 12 }}>
-                <LabelPreview file={file} height={420} />
-              </div>
-            )}
+            <div style={{ color: "var(--text-muted)", fontSize: 13 }}>PDF or image, front and back — add as many as you need. Text is read automatically (with OCR for images), so the SOP audit runs without AI. Flat, square-on exports read best; photos of curved or angled packs read poorly, so use AI review for those.</div>
           </div>
         )}
+
+        {entries.map((entry) => {
+          const { extract } = entry;
+          return (
+            <div key={entry.id} style={{ boxShadow: "inset 0 0 0 1px var(--border)", borderRadius: 10, padding: "11px 13px", marginBottom: 10, background: "var(--panel-sunken)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Icon name={entry.file.type.startsWith("image/") ? "image" : "file"} size={18} style={{ color: "var(--accent-teal-bright)" }} />
+                <span style={{ fontSize: 14, fontWeight: 600, overflowWrap: "anywhere", flex: "1 1 170px", minWidth: 0 }}>{entry.file.name}</span>
+                <span className="mono" style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{formatSize(entry.file.size)}</span>
+                <button onClick={() => togglePreview(entry.id)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 13 }}>
+                  {entry.showPreview ? "Hide" : "Show"}
+                </button>
+                <button onClick={() => removeEntry(entry.id)} aria-label={`Remove ${entry.file.name}`} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 13 }}>
+                  Remove
+                </button>
+              </div>
+              <div style={{ marginTop: 10, display: "flex", gap: 7, alignItems: "flex-start", fontSize: 13, color: extract.state === "ready" ? "var(--accent-teal-bright)" : "var(--text-muted)" }}>
+                {extract.state === "reading" && <span className="spin" style={{ width: 14, height: 14, marginTop: 2, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)", flexShrink: 0 }} />}
+                {extract.state === "ready" && <Icon name="check-circle" size={16} style={{ marginTop: 1 }} />}
+                <span>
+                  {extract.state === "reading" && extract.detail}
+                  {extract.state === "ready" && (extract.label.source === "ocr"
+                    ? `Read ${extract.label.charCount.toLocaleString()} characters with OCR. It can misread small or tilted text, so spelling findings are marked Review.`
+                    : `Text found in the PDF (${extract.label.charCount.toLocaleString()} characters). The SOP audit can run without AI.`)}
+                  {extract.state === "no-text" && "Couldn't read any text from this file, even with OCR. Use AI review."}
+                  {extract.state === "error" && `Couldn't read the label text: ${extract.message}. Try AI review.`}
+                </span>
+              </div>
+              {entry.showPreview && (
+                <div style={{ marginTop: 12 }}>
+                  <LabelPreview file={entry.file} height={360} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {entries.length > 0 && (
+          <div
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInputRef.current?.click(); } }}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+            style={{ border: "1.5px dashed var(--border-strong)", borderRadius: 10, padding: "12px 16px", textAlign: "center", cursor: "pointer", color: "var(--text-secondary)", fontSize: 13.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+          >
+            <Icon name="upload" size={15} /> Add another file (front, back, a second pack…)
+          </div>
+        )}
+
         <input
           ref={fileInputRef}
           type="file"
           accept=".pdf,image/*"
+          multiple
           style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          onChange={(e) => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ""; }}
         />
       </div>
 
@@ -450,8 +501,8 @@ export default function LabelQCPage() {
           {running === "ai" ? (<><span className="spin" style={{ width: 14, height: 14, borderRadius: 999, border: "2px solid var(--tint-4)", borderTopColor: "var(--accent-teal-bright)" }} /> Asking AI, up to a minute</>) : (<><Icon name="sparkle" size={18} /> Run AI review</>)}
         </button>
       </div>
-      {extract.state === "no-text" && selected && (
-        <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The SOP audit couldn't get readable text from this file. Use AI review instead.</div>
+      {selected && entries.length > 0 && !allReady && running === null && entries.some((e) => e.extract.state === "no-text" || e.extract.state === "error") && (
+        <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-muted)" }}>The SOP audit needs readable text from every file; one of these couldn&apos;t be read. Remove it, or use AI review instead.</div>
       )}
       {runError && (
         <div role="alert" style={{ marginTop: 14, display: "flex", gap: 10, background: "rgba(232,64,64,0.1)", boxShadow: "inset 0 0 0 1px rgba(232,64,64,0.32)", borderRadius: 12, padding: "12px 14px", color: "var(--red-text)", fontSize: 14 }}>
@@ -481,6 +532,15 @@ export default function LabelQCPage() {
               </div>
             ))}
           </div>
+
+          {report.mode === "rules" && mergedLabel?.source === "ocr" && counts.warn / Math.max(1, counts.pass + counts.warn + counts.fail) >= 0.7 && (
+            <div role="note" style={{ display: "flex", gap: 10, background: "rgba(255,192,0,0.1)", boxShadow: "inset 0 0 0 1px rgba(255,192,0,0.3)", borderRadius: 12, padding: "12px 14px", color: "var(--amber-text)", marginBottom: 12, fontSize: 13.5 }}>
+              <Icon name="alert-circle" size={18} style={{ marginTop: 1, flexShrink: 0 }} />
+              <span>
+                Most checks couldn&apos;t be confirmed from the OCR text. OCR reads curved, angled, blurry or glary photos poorly. If the label is flat and you&apos;ve uploaded every panel, you&apos;re done; otherwise try AI review, which handles these photos much better.
+              </span>
+            </div>
+          )}
 
           {report.notes.map((n, i) => (
             <div key={i} style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 6 }}>{n}</div>

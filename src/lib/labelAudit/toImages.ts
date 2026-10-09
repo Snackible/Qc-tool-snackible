@@ -127,3 +127,10 @@ export async function fileToJpegs(file: File, maxTotalBytes = 3_900_000): Promis
     await renderer.close();
   }
 }
+
+/** Turns several uploaded labels (e.g. front and back) into one set of JPEGs, splitting the request-size budget evenly between them. */
+export async function multiFileToJpegs(files: File[], maxTotalBytes = 3_900_000): Promise<Blob[]> {
+  const perFile = Math.floor(maxTotalBytes / files.length);
+  const groups = await Promise.all(files.map((f) => fileToJpegs(f, perFile)));
+  return groups.flat();
+}
