@@ -102,11 +102,82 @@ function checkAbsence(target: string, ref: AuditReference): { contradicted: bool
   return { contradicted: false, evidence: ref.ingredients.trim() ? `the sheet's ingredient list has no ${target}` : "" };
 }
 
+/** "Made with Whole Wheat", "Made from jaggery": the named ingredient has to be in the ingredient list. */
+function madeWithTarget(claim: string): string | null {
+  const m = claim.trim().match(/^made\s+(?:with|from|using)\s+(.+)$/i);
+  return m ? normalize(m[1]) : null;
+}
+
+/** Does an ingredient list (normalised) include the named ingredient, in singular or plural form? */
+function listHas(listNorm: string, target: string): boolean {
+  const singular = target.endsWith("s") ? target.slice(0, -1) : target;
+  return [target, singular].some((f) => f && ` ${listNorm} `.includes(` ${f}`));
+}
+
+/** The ingredient list printed on the label, if the label has an "Ingredients" heading. */
+function labelIngredientList(ctx: Ctx): string {
+  const head = findHeading(ctx.rows, /^ingredients?\b/);
+  if (!head) return "";
+  return collectBlock(ctx.rows, head, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[head.row].items[head.item].x));
+}
+
+/** Splits a USP on "/", but not inside brackets: "Source of protein (3.85g/70g and 5.50g/100g)" is one claim. */
+function splitClaims(usp: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of usp) {
+    if (ch === "(" || ch === "[") depth++;
+    if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+    if (ch === "/" && depth === 0) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * A claim's bracketed part ("(3.85g/70g and 5.50g/100g)") is supporting detail from the sheet, not wording to look for on the
+ * label. Its figures are checked against the sheet's nutrition instead.
+ */
+function checkClaimFigures(core: string, detail: string, ref: AuditReference): AuditCheck | null {
+  const nutrient = NUTRIENTS.find((n) => n.names.some((nm) => ` ${normalize(core)} `.includes(` ${nm} `)));
+  const figures = findAll(/(\d+(?:\.\d+)?)\s*(?:g|mg)\s*\/\s*(\d+(?:\.\d+)?)\s*g/gi, detail);
+  if (!nutrient || figures.length === 0 || ref.nutrition.length === 0) return null;
+  const problems: string[] = [];
+  let checked = 0;
+  for (const m of figures) {
+    const amount = parseFloat(m[1]);
+    const per = parseFloat(m[2]);
+    const block = ref.nutrition.find((b) => Math.abs(b.grammage - per) < 0.5);
+    const sheetValue = block ? (block[nutrient.key] as number | null) : null;
+    if (sheetValue === null || sheetValue === undefined) continue;
+    checked++;
+    if (Math.abs(sheetValue - amount) > Math.max(nutrient.floor, Math.abs(sheetValue) * 0.02)) problems.push(`${fmt(amount)}${nutrient.unit}/${fmt(per)}g (sheet nutrition: ${fmt(sheetValue)}${nutrient.unit})`);
+  }
+  if (checked === 0) return null;
+  return {
+    label: `Claim figures: ${core}`,
+    status: problems.length ? "warn" : "pass",
+    expected: detail.trim(),
+    found: problems.length ? `Different from the sheet's nutrition: ${problems.join("; ")}` : undefined,
+    note: problems.length ? undefined : `The figures in brackets match the sheet's ${nutrient.label.toLowerCase()} values.`,
+  };
+}
+
 function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const checks: AuditCheck[] = [];
+  const details = new Map<string, string>();
   const claims = ref.usps
-    .flatMap((u) => u.replace(/^\s*\d+[).]\s*/, "").split("/"))
-    .map((c) => c.trim())
+    .flatMap((u) => splitClaims(u.replace(/^\s*\d+[).]\s*/, "")))
+    .map((c) => {
+      const detail = Array.from(c.matchAll(/[(\[]([^)\]]*)[)\]]/g)).map((m) => m[1]).join(" ");
+      const core = c.replace(/[(\[][^)\]]*[)\]]/g, " ").replace(/\s+/g, " ").replace(/[\s.]+$/, "").trim();
+      if (detail) details.set(core, detail);
+      return core;
+    })
     .filter((c) => c.length > 1);
   const labelWords = new Set(ctx.views.flatMap((v) => v.split(" ")));
 
@@ -116,6 +187,34 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   for (const claim of claims) {
     const norm = normalize(claim);
     if (!norm) continue;
+    const madeWith = madeWithTarget(claim);
+    if (madeWith) {
+      const printed = viewsContain(ctx.views, norm);
+      const inSheet = listHas(normalize(ref.ingredients), madeWith);
+      const labelList = labelIngredientList(ctx);
+      const inLabel = labelList ? listHas(normalize(labelList), madeWith) : null;
+      if (ref.ingredients.trim() && !inSheet) {
+        checks.push({ label: `Claim: ${claim}`, status: "fail", expected: claim, found: "Contradicted by the sheet", note: `The sheet lists this as a claim, but its ingredient list has no ${madeWith}.` });
+      } else if (inLabel === false) {
+        checks.push({ label: `Claim: ${claim}`, status: "fail", expected: claim, found: `No ${madeWith} in the label's ingredients`, note: "The claim says the product is made with this, but the ingredient list printed on the label doesn't include it." });
+      } else if (!printed) {
+        checks.push({
+          label: `Claim: ${claim}`,
+          status: "warn",
+          expected: claim,
+          found: "Not printed",
+          note: `The label doesn't print this claim, though ${inLabel ? "its ingredient list" : "the sheet's ingredient list"} includes ${madeWith}. It may be on a panel that wasn't provided.`,
+        });
+      } else {
+        checks.push({
+          label: `Claim: ${claim}`,
+          status: "pass",
+          found: "Present",
+          note: inLabel ? `Ingredients on the label include ${madeWith}.` : `The sheet's ingredients include ${madeWith}; the label's ingredient list wasn't found to compare.`,
+        });
+      }
+      continue;
+    }
     if (viewsContain(ctx.views, norm)) {
       checks.push({ label: `Claim: ${claim}`, status: "pass", found: "Present" });
       continue;
@@ -146,6 +245,11 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
         ? `Words not on the label: ${missing.join(", ")}. It may be on a panel that wasn't provided.`
         : "The label doesn't print this claim (its words only appear in other places). It may be on a panel that wasn't provided.",
     });
+  }
+
+  for (const [core, detail] of Array.from(details.entries())) {
+    const figures = checkClaimFigures(core, detail, ref);
+    if (figures) checks.push(figures);
   }
 
   const cooking = ref.usps.some((u) => /\b(roasted|baked|popped)\b/i.test(u));
@@ -775,16 +879,19 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       found: missing.length ? `Not on label: ${missing.join(", ")}` : undefined,
     });
   }
-  if (labelPins.length === 0) {
+  // when the sheet has pincodes, only those count: a misread number elsewhere (an OCR'd nutrient value, a batch number) is not an address
+  const addressPins = sheetPins.length ? labelPins.filter((m) => sheetPins.includes(m[0])) : labelPins;
+  if (addressPins.length === 0) {
     checks.push({ label: "Full stop after pincode", status: "warn", sop_rule: true, expected: "PINCODE.", found: "No pincode found on label" });
   } else {
-    const bad = labelPins.filter((m) => !/^\s*\./.test(ctx.flat.slice(m.index + 6, m.index + 8)));
+    const bad = addressPins.filter((m) => !/^\s*\./.test(ctx.flat.slice(m.index + 6, m.index + 8)));
     checks.push({
       label: "Full stop after pincode",
       status: bad.length ? "fail" : "pass",
       sop_rule: true,
       expected: "PINCODE.",
-      found: bad.length ? `No full stop after: ${bad.map((m) => m[0]).join(", ")}` : undefined,
+      found: bad.length ? `No full stop after: ${uniq(bad.map((m) => m[0])).join(", ")}` : undefined,
+      note: bad.length && ctx.ocr ? "The text was read by OCR, which often drops a small full stop, so check the label." : undefined,
     });
   }
 
