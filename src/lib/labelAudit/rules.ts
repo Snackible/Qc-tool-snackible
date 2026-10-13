@@ -388,6 +388,30 @@ function collectBlock(rows: Row[], at: { row: number; item: number }, columnGap 
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Like collectBlock, but ignores column alignment: grabs every word in the block's row/height window regardless of x drift.
+ * A tilted photo can shift one line's column far enough that collectBlock drops it outright rather than just picking up noise;
+ * this is a wider fallback for rescuing a block whose heading was found but a middle line went missing, not a general replacement.
+ */
+function collectNearby(rows: Row[], at: { row: number; item: number }, xMax = Infinity, maxRows = 30): string {
+  const row0 = rows[at.row];
+  const head = row0.items[at.item];
+  const parts: string[] = [];
+  const maxGap = Math.max(head.h, 4) * 3.6;
+  let prevY = row0.y;
+  for (let r = at.row; r < rows.length && r < at.row + maxRows; r++) {
+    const row = rows[r];
+    if (row.page !== row0.page || prevY - row.y > maxGap) break;
+    const items = r === at.row ? row.items.slice(at.item) : row.items;
+    const text = joinItems(items.filter((i) => i.x < xMax));
+    if (!text) continue;
+    if (r > at.row && STOP.test(normalize(text))) break;
+    parts.push(text);
+    prevY = row.y;
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
 // ── Step 6: ingredients ──────────────────────────────────────────────────────
 
 // A component heading ("Pizza Sticks:", "Seasoning :") sits at the start of the list or right after a full stop.
@@ -574,7 +598,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       checks.push({
         label: "Ingredients match the sheet",
         status: "warn",
-        expected: "Every word of the sheet's ingredient list",
+        expected: ref.ingredients.trim(),
         found: `Read badly (OCR): ${unclear.slice(0, 10).join(", ")}${unclear.length > 10 ? "…" : ""}`,
         note: "These words are on the label but the OCR garbled them, so they can't be confirmed. Check them on the label.",
       });
@@ -591,7 +615,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       checks.push({
         label: "Ingredients match the sheet",
         status: (ratio > 0.1 || swapped) && !partlyRead ? "fail" : "warn",
-        expected: "Every word of the sheet's ingredient list",
+        expected: ref.ingredients.trim(),
         found: `Missing on label: ${missing.slice(0, 10).join(", ")}${missing.length > 10 ? "…" : ""}`,
         note: partlyRead
           ? "Only part of the list could be read by the OCR, so these may be unread rather than missing. Check the label or use AI review."
@@ -691,15 +715,25 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   // allergen declaration
   const sheetGroups = allergenGroups(ref.allergens);
   const aHead = findHeading(ctx.rows, /^allergen/);
-  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x, ctx.rows[aHead.row].y), 30, ctx.ocr ? 7 : 4) : "";
+  const aBlockXMax = aHead ? blockLimit(ctx, ctx.rows[aHead.row].items[aHead.item].x, ctx.rows[aHead.row].y) : Infinity;
+  const aText = aHead ? collectBlock(ctx.rows, aHead, ctx.ocr ? 60 : 20, aBlockXMax, 30, ctx.ocr ? 7 : 4) : "";
   if (sheetGroups.size === 0) {
     checks.push({ label: "Allergen declaration", status: "skip", note: "The sheet lists no allergens." });
   } else if (!aText) {
     checks.push({ label: "Allergen declaration", status: "warn", expected: ref.allergens.trim(), found: "No 'Allergen' statement found" });
   } else {
     const labelGroups = allergenGroups(aText, ctx.ocr);
-    const missing = Array.from(sheetGroups).filter((g) => !satisfied(g, labelGroups));
-    const extra = Array.from(labelGroups).filter((g) => !sheetGroups.has(g) && !(g === "nuts" && (sheetGroups.has("peanut") || sheetGroups.has("tree nuts"))) && !((g === "peanut" || g === "tree nuts") && sheetGroups.has("nuts")));
+    let missing = Array.from(sheetGroups).filter((g) => !satisfied(g, labelGroups));
+    // a tilted photo can shift one line of the statement far enough off-column that collectBlock drops it outright (not just
+    // noisily); before failing a missing allergen, re-check against the whole block ignoring column alignment
+    let aTextWide = aText;
+    if (missing.length && ctx.ocr && aHead) {
+      aTextWide = collectNearby(ctx.rows, aHead, aBlockXMax, 30);
+      const wideGroups = allergenGroups(aTextWide, ctx.ocr);
+      missing = missing.filter((g) => !satisfied(g, wideGroups));
+    }
+    const labelGroupsWide = aTextWide === aText ? labelGroups : allergenGroups(aTextWide, ctx.ocr);
+    const extra = Array.from(labelGroupsWide).filter((g) => !sheetGroups.has(g) && !(g === "nuts" && (sheetGroups.has("peanut") || sheetGroups.has("tree nuts"))) && !((g === "peanut" || g === "tree nuts") && sheetGroups.has("nuts")));
     // what the product itself contains (the sheet's text before "made in a facility" / "may contain") must be declared; a
     // missing cross-contact allergen read by OCR is more likely cut off or unread than absent
     const primary = allergenGroups(ref.allergens.split(/made in a facility|manufactured in a facility|in a facility|may contain|processed in|processes/i)[0]);
