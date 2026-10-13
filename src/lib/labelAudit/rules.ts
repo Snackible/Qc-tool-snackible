@@ -493,10 +493,24 @@ function allergenGroups(text: string, ocr = false): Set<string> {
   const t = text.toLowerCase();
   const groups = new Set(ALLERGEN_GROUPS.filter(([, re]) => re.test(t)).map(([g]) => g));
   if (ocr) {
-    // OCR misreads a letter ("giuten", "mi1k"): a word one edit from an allergen word (5+ letters) counts
+    // OCR misreads a letter ("giuten", "mi1k"): a word one edit from an allergen word (4+ letters) counts
     for (const w of words(t)) {
       if (w.length < 4) continue;
-      for (const [g, keys] of ALLERGEN_WORDS) if (keys.some((k) => k.length >= 5 && editDistance(w, k, 1) <= 1)) groups.add(g);
+      for (const [g, keys] of ALLERGEN_WORDS) if (keys.some((k) => k.length >= 4 && editDistance(w, k, 1) <= 1)) groups.add(g);
+    }
+    // OCR sometimes runs an allergen word into the next word with no space ("milkcudmil" for "milk and..."), so it's
+    // never its own token: scan for it as an approximate substring too, not just as a whole word
+    const compact = t.replace(/[^a-z]/g, "");
+    for (const [g, keys] of ALLERGEN_WORDS) {
+      for (const k of keys) {
+        if (k.length < 4 || groups.has(g)) continue;
+        for (let i = 0; i + k.length - 1 <= compact.length; i++) {
+          if (editDistance(compact.slice(i, i + k.length), k, 1) <= 1) {
+            groups.add(g);
+            break;
+          }
+        }
+      }
     }
   }
   return groups;
