@@ -56,7 +56,15 @@ async function fetchBytes(url: string, onProgress?: (frac: number) => void): Pro
   return out;
 }
 
+// a scan can start while a preload is still downloading, so progress goes to whoever is waiting, not only the first caller
+const loadListeners = new Set<(p: PaddleProgress) => void>();
+let loadPct = 0;
+
 function loadModels(onProgress?: (p: PaddleProgress) => void): Promise<Models> {
+  if (onProgress) {
+    loadListeners.add(onProgress);
+    if (modelsPromise) onProgress({ stage: "loading", pct: loadPct });
+  }
   if (!modelsPromise) {
     modelsPromise = (async () => {
       const ort = await loadOrtScript();
@@ -64,7 +72,10 @@ function loadModels(onProgress?: (p: PaddleProgress) => void): Promise<Models> {
       ort.env.wasm.numThreads = 1; // threads need cross-origin isolation, which the site does not set
       let det = 0;
       let rec = 0;
-      const report = () => onProgress?.({ stage: "loading", pct: ((det + rec) / 2) * 100 });
+      const report = () => {
+        loadPct = ((det + rec) / 2) * 100;
+        loadListeners.forEach((l) => l({ stage: "loading", pct: loadPct }));
+      };
       const [detBytes, recBytes, dictText] = await Promise.all([
         fetchBytes(`${MODEL_BASE}det.onnx`, (f) => ((det = f), report())),
         fetchBytes(`${MODEL_BASE}rec.onnx`, (f) => ((rec = f), report())),
@@ -79,10 +90,18 @@ function loadModels(onProgress?: (p: PaddleProgress) => void): Promise<Models> {
       return { ort, det: detSession, rec: recSession, dict };
     })().catch((e) => {
       modelsPromise = null; // allow a retry
+      loadPct = 0;
       throw e;
     });
   }
-  return modelsPromise;
+  const p = modelsPromise;
+  if (onProgress) p.then(() => loadListeners.delete(onProgress), () => loadListeners.delete(onProgress));
+  return p;
+}
+
+/** Starts downloading and setting up the OCR engine in the background, so the first scan doesn't wait for it. */
+export function preloadPaddleOcr(): void {
+  loadModels().catch(() => {}); // a failed preload is retried by the real scan, which reports the error
 }
 
 type Box = { tl: [number, number]; tr: [number, number]; bl: [number, number] };

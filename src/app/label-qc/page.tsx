@@ -6,6 +6,7 @@ import { Product } from "../../lib/types";
 import { extractPdfText, mergeLabels } from "../../lib/labelAudit/extract";
 import { multiFileToJpegs, openRenderer } from "../../lib/labelAudit/toImages";
 import { ocrCanvases } from "../../lib/labelAudit/ocr";
+import { preloadPaddleOcr } from "../../lib/labelAudit/paddleOcr";
 import { describeNutrition } from "../../lib/labelAudit/nutrients";
 import { PackOption, buildReference, buildVocabulary, packOptionsFor } from "../../lib/labelAudit/reference";
 import { labelHasText, runRulesAudit } from "../../lib/labelAudit/rules";
@@ -86,6 +87,13 @@ export default function LabelQCPage() {
       })
       .catch((e) => setLoadError(String(e)))
       .finally(() => setLoading(false));
+  }, []);
+
+  // the OCR engine is ~20 MB; fetch it while the user picks a product so the first scan doesn't wait for it
+  useEffect(() => {
+    if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return;
+    const t = setTimeout(preloadPaddleOcr, 1500);
+    return () => clearTimeout(t);
   }, []);
 
   const vocabulary = useMemo(() => buildVocabulary(products), [products]);

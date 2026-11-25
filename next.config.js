@@ -14,6 +14,15 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ["xlsx", "canvas"],
   },
+  // OCR model files are large and only change when replaced; let browsers keep them for a week without asking again
+  async headers() {
+    return [
+      {
+        source: "/ocr/:file*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=604800, stale-while-revalidate=2592000" }],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
