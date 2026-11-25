@@ -14,6 +14,21 @@ export function words(s: string): string[] {
   return n ? n.split(" ") : [];
 }
 
+/** Drops a plural "s" so "sticks"/"stick" compare equal; applied to both sides of a comparison, so odd cuts ("glass" -> "glas") still match. */
+export function singular(w: string): string {
+  return w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w;
+}
+
+/** A normalised phrase with every word made singular. */
+export function singularPhrase(norm: string): string {
+  return norm ? norm.split(" ").map(singular).join(" ") : norm;
+}
+
+/** Does a set of normalised words contain w, ignoring singular/plural? */
+export function hasWordForm(set: Set<string>, w: string): boolean {
+  return set.has(w) || set.has(singular(w)) || set.has(w + "s") || set.has(w + "es") || (w.endsWith("es") && set.has(w.slice(0, -2)));
+}
+
 /** Optimal-string-alignment distance (counts a transposition as one edit); returns max+1 once it exceeds max. */
 export function editDistance(a: string, b: string, max: number): number {
   if (a === b) return 0;
@@ -97,8 +112,11 @@ export function buildViews(items: LabelItem[], rows: Row[]): string[] {
   return views;
 }
 
+/** Is the phrase in any view? Singular/plural differences ("Biscuit Stick" vs "Biscuit Sticks") don't count. */
 export function viewsContain(views: string[], phraseNorm: string): boolean {
   if (!phraseNorm) return false;
   const needle = ` ${phraseNorm} `;
-  return views.some((v) => ` ${v} `.includes(needle));
+  if (views.some((v) => ` ${v} `.includes(needle))) return true;
+  const sing = ` ${singularPhrase(phraseNorm)} `;
+  return views.some((v) => ` ${singularPhrase(v)} `.includes(sing));
 }

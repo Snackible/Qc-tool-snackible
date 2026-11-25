@@ -8,7 +8,7 @@ import { NutritionBlock } from "../types";
 import { flattenItems } from "./flatten";
 import { NUTRIENTS, UNIT_WORDS } from "./nutrients";
 import { AuditReference } from "./reference";
-import { Row, buildRows, buildViews, editDistance, joinItems, normalize, rowText, viewsContain, words } from "./textUtils";
+import { Row, buildRows, buildViews, editDistance, hasWordForm, joinItems, normalize, rowText, singularPhrase, viewsContain, words } from "./textUtils";
 import { AuditCheck, AuditReport, AuditStep, CheckStatus, ExtractedLabel, LabelItem, STEP_NAMES, combineStatus } from "./types";
 
 type Ctx = { rows: Row[]; flat: string; views: string[]; ocr: boolean };
@@ -44,7 +44,7 @@ function checkName(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const labelWords = new Set(ctx.views.flatMap((v) => v.split(" ")));
   // OCR reads accented letters badly ("jalapeño" -> "jalapefio"), so near-misses on longer words count as present
   const present = (w: string) =>
-    labelWords.has(w) ||
+    hasWordForm(labelWords, w) ||
     (ctx.ocr && w.length >= 5 && Array.from(labelWords).some((l) => editDistance(w, l, w.length >= 8 ? 2 : 1) <= (w.length >= 8 ? 2 : 1)));
   const missing = words(ref.productName).filter((w) => !present(w));
   if (missing.length === 0) {
@@ -239,7 +239,7 @@ function checkUsps(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       );
       continue;
     }
-    const missing = words(claim).filter((w) => !labelWords.has(w));
+    const missing = words(claim).filter((w) => !hasWordForm(labelWords, w));
     checks.push({
       label: `Claim: ${claim}`,
       status: "warn",
@@ -575,7 +575,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     // OCR garbles words ("oatmeal" -> "oaneal"), so with OCR a word within a couple of letters counts as present
     const labelList = Array.from(labelTokens);
     const nearPresent = (w: string) => ctx.ocr && w.length >= 5 && labelList.some((l) => editDistance(w, l, w.length >= 7 ? 2 : 1) <= (w.length >= 7 ? 2 : 1));
-    const notPresent = sheetTokens.filter((w) => !labelTokens.has(w) && !nearPresent(w));
+    const notPresent = sheetTokens.filter((w) => !hasWordForm(labelTokens, w) && !nearPresent(w));
     // OCR also leaves damaged fragments of words ("min" for "mint", "suar" for "sugar", "foz" for "soy"): a missing word with
     // such a counterpart on the label (a word the sheet doesn't have) was read badly, which is not the same as being absent
     const sheetWordSet = new Set(sheetTokens);
@@ -629,7 +629,7 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     const labelComponentCount = segments.filter((s) => s.heading).length;
     if (ref.ingredients.trim() && labelComponentCount <= 1 && sheetSegments.filter((s) => s.heading).length <= 1) {
       const sheetSet = new Set(sheetTokens);
-      let extra = uniq(words(list)).filter((w) => w.length > 1 && !sheetSet.has(w) && !damagedBy.has(w)); // (damaged fragments are reported above)
+      let extra = uniq(words(list)).filter((w) => w.length > 1 && !hasWordForm(sheetSet, w) && !damagedBy.has(w)); // (damaged fragments are reported above)
       if (ctx.ocr) {
         // with OCR most "extra" words are damaged copies of sheet words ("suar", "dextr", "powedise") or noise ("foz", "mg"):
         // only a clean word that resembles nothing in the sheet is worth reporting
@@ -647,8 +647,8 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
     }
 
     // order of ingredients (descending by weight): compare the items both lists share
-    const sheetItems = sheetSegments.flatMap((s) => topLevelItems(s.body));
-    const labelItems = segments.flatMap((s) => topLevelItems(s.body));
+    const sheetItems = sheetSegments.flatMap((s) => topLevelItems(s.body)).map(singularPhrase);
+    const labelItems = segments.flatMap((s) => topLevelItems(s.body)).map(singularPhrase);
     const idx = sheetItems.map((i) => labelItems.indexOf(i)).filter((i, k) => i >= 0 && sheetItems.indexOf(sheetItems[k]) === k);
     const shared = sheetItems.filter((i) => labelItems.includes(i));
     if (shared.length >= 3) {
@@ -661,9 +661,9 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
       });
     }
 
-    // SOP: first letter capital, rest lowercase
+    // SOP: first letter capital, no words in ALL CAPS. A Capitalised word mid-list ("Sugar", "Soya Lecithin") is
+    // small-scale styling noise, not reported.
     const allCaps: string[] = [];
-    const capitalised: string[] = [];
     let firstOk = segments.length > 0;
     for (const seg of segments) {
       if (!/^[^A-Za-z]*[A-ZÀ-Ý]/.test(seg.body)) firstOk = false;
@@ -673,19 +673,18 @@ function checkIngredients(ctx: Ctx, ref: AuditReference): AuditCheck[] {
         const t = m[0];
         if (t.length < 2 || ALLOWED_CAPS.has(t)) return;
         if (t === t.toUpperCase()) allCaps.push(t);
-        else if (/^[A-ZÀ-Ý]/.test(t)) capitalised.push(t);
       });
     }
-    const caseStatus: CheckStatus = !firstOk || allCaps.length ? "fail" : capitalised.length ? "warn" : "pass";
+    const caseStatus: CheckStatus = !firstOk || allCaps.length ? "fail" : "pass";
     checks.push({
       label: "Casing: first letter capital, rest lowercase",
       status: caseStatus,
       sop_rule: true,
-      expected: "First ingredient capitalised, the rest lowercase",
+      expected: "First ingredient capitalised, no words in ALL CAPS",
       found:
         caseStatus === "pass"
           ? undefined
-          : [!firstOk ? "List does not start with a capital" : "", allCaps.length ? `ALL CAPS: ${uniq(allCaps).join(", ")}` : "", capitalised.length ? `Capitalised mid-list: ${uniq(capitalised).join(", ")}` : ""].filter(Boolean).join("; "),
+          : [!firstOk ? "List does not start with a capital" : "", allCaps.length ? `ALL CAPS: ${uniq(allCaps).join(", ")}` : ""].filter(Boolean).join("; "),
     });
 
     // SOP: ends with full stop (each component list, and the CONTAINS statement)
@@ -1268,22 +1267,52 @@ function checkMrp(ctx: Ctx, ref: AuditReference): AuditCheck[] {
 // ── Step 10: addresses & licences ────────────────────────────────────────────
 
 /** The sheet's manufacturer cell is free text: optional "For X:" / "X:" heading, then the company name, then its address. */
-function manufacturerNames(manufacturer: string): string[] {
-  const names: string[] = [];
-  let expectName = true;
+function manufacturerEntries(manufacturer: string): { name: string; address: string }[] {
+  const entries: { name: string; address: string }[] = [];
+  let cur: { name: string; address: string } | null = null;
   for (const raw of manufacturer.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) {
-      expectName = true;
+      cur = null;
       continue;
     }
     if (/:\s*$/.test(line) || /^(for|fssai|lic)\b/i.test(line)) continue;
-    if (expectName) {
-      names.push(line.replace(/[.,]+$/, ""));
-      expectName = false;
+    if (!cur) {
+      cur = { name: line.replace(/[.,]+$/, ""), address: "" };
+      entries.push(cur);
+    } else {
+      cur.address = cur.address ? `${cur.address} ${line}` : line;
     }
   }
-  return names.slice(0, 3);
+  return entries.slice(0, 3);
+}
+
+// connector words and abbreviations that labels often drop or spell differently; not part of what makes an address right
+const ADDRESS_FILLER = new Set(["the", "and", "of", "no", "near", "opp", "opposite", "behind", "dist", "district", "at", "post", "nr"]);
+
+/** The complete street address (every word and number of it, after the company name) must be on the label. */
+function checkFullAddress(ctx: Ctx, entries: { name: string; address: string }[]): AuditCheck {
+  const withAddress = entries.filter((e) => e.address);
+  if (!withAddress.length) {
+    return { label: "Complete address", status: "skip", note: "The sheet has no street address for this product, only a name." };
+  }
+  const labelWords = new Set(ctx.views.flatMap((v) => v.split(" ")));
+  const fuzzy = (w: string) => ctx.ocr && w.length >= 5 && Array.from(labelWords).some((l) => editDistance(w, l, w.length >= 8 ? 2 : 1) <= (w.length >= 8 ? 2 : 1));
+  const missing: string[] = [];
+  for (const e of withAddress) {
+    const toks = uniq(words(e.address)).filter((w) => !ADDRESS_FILLER.has(w) && (/^\d+$/.test(w) || w.length >= 2));
+    for (const w of toks) if (!hasWordForm(labelWords, w) && !fuzzy(w)) missing.push(w);
+  }
+  const expected = withAddress.map((e) => `${e.name}: ${e.address}`).join(" | ");
+  if (!missing.length) return { label: "Complete address", status: "pass", expected, found: "Every word and number of the address is on the label" };
+  return {
+    label: "Complete address",
+    // with OCR, small print the OCR missed is not proof the address is wrong
+    status: ctx.ocr ? "warn" : "fail",
+    expected,
+    found: `Not found on label: ${uniq(missing).slice(0, 12).join(", ")}${missing.length > 12 ? "…" : ""}`,
+    note: ctx.ocr ? "The address was read by OCR, which can miss small print. Check these parts on the label." : "Part of the sheet's address is missing or different on the label.",
+  };
 }
 
 /** Finds a six-digit pincode in label text: digits may be split by one space or hyphen, and with OCR one wrong digit is tolerated. */
@@ -1310,7 +1339,8 @@ function findPincode(flat: string, pin: string, ocr: boolean): { index: number; 
 function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   const checks: AuditCheck[] = [];
 
-  const names = manufacturerNames(ref.manufacturer);
+  const entries = manufacturerEntries(ref.manufacturer);
+  const names = entries.map((e) => e.name);
   if (names.length) {
     // OCR garbles letters ("DIVINUTTY" -> "DMINUTTY"): with OCR every word of the name may be a near match
     const labelWords = new Set(ctx.views.flatMap((v) => v.split(" ")));
@@ -1327,6 +1357,7 @@ function checkAddresses(ctx: Ctx, ref: AuditReference): AuditCheck[] {
   } else {
     checks.push({ label: "Manufacturer name", status: "skip", note: "The sheet has no manufacturer name to compare." });
   }
+  checks.push(checkFullAddress(ctx, entries));
 
   // sheet pincodes are searched for directly (allowing a space or hyphen between digits, and for OCR one misread digit)
   const sheetPins = uniq(findAll(/\b[1-9]\d{5}\b/, ref.manufacturer).map((m) => m[0]));
